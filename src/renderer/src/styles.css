@@ -240,3 +240,7 @@ h3 { font-size: 13px; margin: 16px 0 6px; }
 .undo-bar button { padding: 2px 12px; }
 .undo-bar .link { color: var(--bg); padding: 0 4px; }
 .page { position: relative; }
+
+.clip-privacy { margin: 8px 0; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 12px; }
+.clip-privacy summary { cursor: pointer; font-weight: 600; }
+.chips-col { display: grid; gap: 2px; }
