@@ -14,6 +14,7 @@ interface Props {
   onUi: (p: Partial<UiSettings>) => void
   metrics: Metrics | null
   lowPower: boolean
+  focus: boolean
   onLowPower: (on: boolean) => void
   onInteract: (k: Interaction) => void
   onOpen: (item: Item) => void
@@ -61,6 +62,7 @@ export function Home(p: Props) {
             <button onClick={() => window.cat.clipPause(!(p.clip?.paused ?? true))}>
               {p.clip?.paused === false ? 'Pause clipboard' : 'Capture clipboard'}
             </button>
+            <button onClick={() => window.cat.focusSet(!p.focus)} aria-pressed={p.focus} title="Quiet the cat while you work">{p.focus ? 'Focus: on' : 'Focus mode'}</button>
             <button onClick={() => window.cat.pickerShow()} title="Ctrl+Alt+V from anywhere">Quick picker</button>
             <button onClick={() => p.onInteract('pet')}>&#9995; Pet</button>
             <button onClick={() => p.onInteract('treat')}>&#128031; Treat</button>

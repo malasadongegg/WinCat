@@ -43,6 +43,8 @@ export function PetView() {
   const [roomDrag, setRoomDrag] = useState<Record<string, number>>({})
   const [lowPower, setLowPower] = useState(false)
   const [reduceMotion, setReduceMotion] = useState(false)
+  const [focus, setFocus] = useState(false)
+  const focusRef = useRef(false)
   const [size, setSize] = useState({ width: window.innerWidth, height: window.innerHeight })
 
   const el = useRef<HTMLDivElement>(null)
@@ -76,7 +78,7 @@ export function PetView() {
   /** sounds are opt-in; never while the overlay is hidden (e.g. a fullscreen app is up) */
   const sound = useCallback((name: Sound) => {
     const c = compRef.current
-    if (!c.sound || document.hidden) return
+    if (!c.sound || document.hidden || focusRef.current) return
     sfx.current.volume = c.volume
     sfx.current.play(name)
   }, [])
@@ -88,6 +90,7 @@ export function PetView() {
   }, [])
 
   const say = useCallback((event: LineEvent) => {
+    if (focusRef.current) return // focus mode: no bubbles
     if (event === 'greet' || event === 'welcomeBack' || event === 'wake' || (event === 'idle' && Math.random() < 0.35)) sound('meow')
     if (!compRef.current.bubbles) return
     // now and then the cat comments on the season (local date only)
@@ -164,7 +167,8 @@ export function PetView() {
   }, [setReaction, say, sound])
 
   useEffect(() => {
-    window.cat.getSettings().then((s) => { setLowPower(s.lowPower); lowRef.current = s.lowPower })
+    window.cat.getSettings().then((s) => { setLowPower(s.lowPower); lowRef.current = s.lowPower; setFocus(s.focusMode); focusRef.current = s.focusMode })
+    const offF = window.cat.onFocus((on) => { setFocus(on); focusRef.current = on; if (on) { setBubble(null); setOfferOpen(false) } })
     window.cat.uiGet().then((u) => setReduceMotion(u.reduceMotion))
     const offUi = window.cat.onUi((u) => setReduceMotion(u.reduceMotion))
     const offLp = window.cat.onLowPower((on) => { setLowPower(on); lowRef.current = on })
@@ -181,6 +185,7 @@ export function PetView() {
       }
     })
     const offA = window.cat.onAchievement((titles) => {
+      if (focusRef.current) return
       showBubble(`\u{1F3C6} ${titles.join(', ')}`, 6000)
       sound('chirp')
     })
@@ -195,7 +200,7 @@ export function PetView() {
     })
     const onResize = () => setSize({ width: window.innerWidth, height: window.innerHeight })
     window.addEventListener('resize', onResize)
-    return () => { offLp(); offC(); offUi(); offA(); offP(); offD(); window.removeEventListener('resize', onResize) }
+    return () => { offLp(); offC(); offUi(); offA(); offP(); offD(); offF(); window.removeEventListener('resize', onResize) }
   }, [say, sound, showBubble])
 
   // furniture the cat can visit (positions in overlay pixels)
@@ -279,7 +284,7 @@ export function PetView() {
       const target = m && inside && performance.now() - m.at < 10_000 ? { x: m.x - rr.origin.x, y: m.y - rr.origin.y } : null
       // reactions own the cat; so does your pointer: it stands still while you hover it or its menu is open
       const holding = captured.current || menuRef.current
-      const reacting = (kindRef.current !== 'idle' && kindRef.current !== 'hyper') || (holding && kindRef.current !== 'hyper')
+      const reacting = (kindRef.current !== 'idle' && kindRef.current !== 'hyper') || (holding && kindRef.current !== 'hyper') || focusRef.current
       const next = step(p, dt, w, tuning, reacting, Math.random, {
         target,
         platforms: compRef.current.perch && !rr.on ? platforms.current : [],
@@ -369,6 +374,7 @@ export function PetView() {
       const p = pet.current
       if (!p || document.hidden || dragging.current || kindRef.current !== 'idle') return
       if (p.mode !== 'walk' && p.mode !== 'run') return
+      if (focusRef.current) return
       if (Math.random() > 0.12) return // roughly one find every minute or two of wandering
       setFinds((l) => {
         if (l.length >= MAX_FINDS) return l
@@ -486,6 +492,7 @@ export function PetView() {
     : kind === 'annoyed' ? 'hiss'
     : kind === 'tired' ? 'pant'
     : kind === 'hyper' ? 'run'
+    : focus && look.mode === 'sit' ? 'sleep' // focus mode: the cat naps quietly in place
     : look.mode === 'sit' && kind !== 'idle' ? (kind === 'rest' ? 'sleep' : kind)
     : look.mode === 'chase' ? 'run'
     : look.mode === 'goto' ? 'walk'

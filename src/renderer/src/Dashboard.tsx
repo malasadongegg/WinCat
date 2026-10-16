@@ -18,6 +18,7 @@ interface Props {
   ui: UiSettings
   onUi: (p: Partial<UiSettings>) => void
   lowPower: boolean
+  focus: boolean
   metrics: Metrics | null
   companion: CompanionState
   onInteract: (k: Interaction) => void
@@ -123,6 +124,7 @@ export function Dashboard(p: Props) {
               onUi={p.onUi}
               metrics={p.metrics}
               lowPower={p.lowPower}
+              focus={p.focus}
               onLowPower={p.onLowPower}
               onInteract={p.onInteract}
               onOpen={open}
