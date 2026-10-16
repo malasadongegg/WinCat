@@ -2,6 +2,7 @@ import { clipboard, ClipboardItem } from 'electron'
 import { ClipHistory, hashOf } from './history'
 import { detectSensitive } from './sensitive'
 import type { ClipState, PendingReview } from '../../shared/clipboard'
+import { DEFAULT_CLIP_CONFIG, type ClipConfig } from '../../shared/clipconfig'
 
 /**
  * Polls the system clipboard (Electron has no change event) and feeds ClipHistory.
@@ -12,6 +13,7 @@ export class ClipboardService {
   readonly history = new ClipHistory()
   /** Capture is opt-in: starts paused each launch until the user turns it on. */
   paused = true
+  private config: ClipConfig = DEFAULT_CLIP_CONFIG
   private timer: NodeJS.Timeout | null = null
   private lastHash = ''
   private pending = new Map<number, { text: string; reason: string }>()
@@ -19,6 +21,11 @@ export class ClipboardService {
   private busy = false
 
   constructor(private onChange: (s: ClipState) => void) {}
+
+  setConfig(c: ClipConfig): void {
+    this.config = c
+    this.history.setLimits({ perImage: c.perImageMB * 1048576, totalImages: c.totalImagesMB * 1048576 })
+  }
 
   start(): void {
     if (this.timer) return
@@ -116,7 +123,7 @@ export class ClipboardService {
         const h = hashOf(text)
         if (h === this.lastHash) return
         this.lastHash = h
-        const reason = detectSensitive(text)
+        const reason = detectSensitive(text, [], this.config.disabled, this.config.patterns)
         if (reason) {
           // hold in memory only; ask before anything is stored in history
           this.pending.set(this.nextPending++, { text, reason })

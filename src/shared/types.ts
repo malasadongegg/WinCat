@@ -2,6 +2,7 @@ import type { ClipState } from './clipboard'
 import type { Cosmetics } from './cosmetics'
 import type { RoomItem, RoomOffer, RoomSize, RoomStyle } from './catlife'
 import type { BackupPick, Resolution, SnapshotList } from './backup'
+import { DEFAULT_CLIP_CONFIG, type ClipConfig } from './clipconfig'
 import { DEFAULT_HOTKEYS, type HotkeyId } from './hotkeys'
 import type { Outcome } from './overdo'
 import type { UiSettings } from './ui'
@@ -17,13 +18,14 @@ export interface Settings {
   /** size cap for automatic local snapshots */
   snapshotCapMB: number
   hotkeys: Record<HotkeyId, string>
+  clipboard: ClipConfig
   /** preferred cat window position, keyed by display id */
   placement: Record<string, { x: number; y: number }>
   companion: CompanionState
   ui: UiSettings
 }
 
-export const DEFAULT_SETTINGS: Settings = { lowPower: false, focusMode: false, catHidden: false, snapshotCapMB: 1024, hotkeys: DEFAULT_HOTKEYS, placement: {}, companion: DEFAULT_COMPANION, ui: DEFAULT_UI }
+export const DEFAULT_SETTINGS: Settings = { lowPower: false, focusMode: false, catHidden: false, snapshotCapMB: 1024, hotkeys: DEFAULT_HOTKEYS, clipboard: DEFAULT_CLIP_CONFIG, placement: {}, companion: DEFAULT_COMPANION, ui: DEFAULT_UI }
 
 export interface ConfigPatch {
   personality?: Personality
@@ -74,6 +76,8 @@ export interface CatApi {
   loginSet(on: boolean): Promise<{ available: boolean; enabled: boolean }>
   hotkeysGet(): Promise<{ hotkeys: Record<HotkeyId, string>; failed: HotkeyId[] }>
   hotkeysSet(id: HotkeyId, accelerator: string): Promise<{ hotkeys: Record<HotkeyId, string>; failed: HotkeyId[]; error?: string }>
+  clipConfigGet(): Promise<ClipConfig>
+  clipConfigSet(patch: Partial<ClipConfig>): Promise<ClipConfig>
   statBump(name: string): void
   pickerHide(): void
   pickerShow(): void

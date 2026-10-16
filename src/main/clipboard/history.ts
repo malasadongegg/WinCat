@@ -36,6 +36,12 @@ export class ClipHistory {
 
   constructor(private limits: Limits = DEFAULT_LIMITS) {}
 
+  /** apply new image limits right away (images already kept stay until the total is exceeded again) */
+  setLimits(l: Limits): void {
+    this.limits = l
+    this.enforceImageTotal()
+  }
+
   list(): ClipItem[] {
     return this.items.map((i) => ({ ...i }))
   }

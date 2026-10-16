@@ -17,6 +17,7 @@ import { buildBackup, mergeCompanion, mergeWorkspaces, parseBackup, resolveConfl
 import { createSnapshot, listSnapshots, readSnapshot, snapshotBytes, trimSnapshots } from './backup'
 import { decryptText, encryptText, isEnvelope, type Envelope } from './backupCrypto'
 import { TRAY_ICON_PNG_BASE64 } from './trayIcon'
+import { sanitizeClipConfig } from '../shared/clipconfig'
 import { HOTKEY_LABELS, isValidAccelerator, sanitizeHotkeys, type HotkeyId } from '../shared/hotkeys'
 import { sanitizeUi } from '../shared/ui'
 
@@ -513,6 +514,13 @@ function registerIpc(): void {
     if (typeof on === 'boolean' && app.isPackaged) app.setLoginItemSettings({ openAtLogin: on })
     return { available: app.isPackaged, enabled: app.isPackaged ? app.getLoginItemSettings().openAtLogin : false }
   })
+  ipcMain.handle('clipcfg:get', () => settings.clipboard)
+  ipcMain.handle('clipcfg:set', (_e, patch: unknown) => {
+    settings.clipboard = sanitizeClipConfig({ ...settings.clipboard, ...((patch ?? {}) as object) }, settings.clipboard)
+    saveSettings(settings)
+    clip.setConfig(settings.clipboard)
+    return settings.clipboard
+  })
   ipcMain.handle('hotkeys:get', () => ({ hotkeys: settings.hotkeys, failed: hotkeyFailed }))
   ipcMain.handle('hotkeys:set', (_e, id: unknown, accel: unknown) => {
     if (typeof id !== 'string' || !(id in HOTKEY_LABELS) || !isValidAccelerator(accel)) return { hotkeys: settings.hotkeys, failed: hotkeyFailed, error: 'That is not a valid shortcut. Use at least one of Ctrl, Alt, Shift plus a key.' }
@@ -590,6 +598,7 @@ app.whenReady().then(() => {
   createPetWindow()
   createPanelWindow()
   createTray()
+  clip.setConfig(settings.clipboard)
   clip.start() // capture is session-only (and off until enabled); history lives in memory
   applyHotkeys()
 
