@@ -3,6 +3,7 @@ import type { CompanionState, Interaction } from '../shared/companion'
 import type { Outcome } from '../shared/overdo'
 import type { UiSettings } from '../shared/ui'
 import type { Workspace } from '../shared/workspace'
+import type { VaultStatus } from '../shared/vault'
 import type { ClipState } from '../shared/clipboard'
 import type { CatApi } from '../shared/types'
 
@@ -41,6 +42,32 @@ const api: CatApi = {
   hotkeysSet: (id, a) => ipcRenderer.invoke('hotkeys:set', id, a),
   clipConfigGet: () => ipcRenderer.invoke('clipcfg:get'),
   clipConfigSet: (p) => ipcRenderer.invoke('clipcfg:set', p),
+  vaultStatus: () => ipcRenderer.invoke('vault:status'),
+  vaultCreate: (pw) => ipcRenderer.invoke('vault:create', pw),
+  vaultUnlock: (pw) => ipcRenderer.invoke('vault:unlock', pw),
+  vaultUnlockRecovery: (k) => ipcRenderer.invoke('vault:unlockRecovery', k),
+  vaultUnlockOs: () => ipcRenderer.invoke('vault:unlockOs'),
+  vaultLock: () => ipcRenderer.invoke('vault:lock'),
+  vaultGet: () => ipcRenderer.invoke('vault:get'),
+  vaultSaveItem: (i) => ipcRenderer.invoke('vault:saveItem', i),
+  vaultDeleteItem: (id) => ipcRenderer.invoke('vault:deleteItem', id),
+  vaultSaveFolder: (f) => ipcRenderer.invoke('vault:saveFolder', f),
+  vaultDeleteFolder: (id) => ipcRenderer.invoke('vault:deleteFolder', id),
+  vaultChangePassword: (pw) => ipcRenderer.invoke('vault:changePassword', pw),
+  vaultSetOs: (on) => ipcRenderer.invoke('vault:setOs', on),
+  vaultSetOptions: (o) => ipcRenderer.invoke('vault:setOptions', o),
+  vaultDestroy: (c) => ipcRenderer.invoke('vault:destroy', c),
+  vaultCopy: (t) => ipcRenderer.invoke('vault:copy', t),
+  onVault: (cb) => {
+    const h = (_: unknown, s: VaultStatus) => cb(s)
+    ipcRenderer.on('vault', h)
+    return () => ipcRenderer.removeListener('vault', h)
+  },
+  onVaultData: (cb) => {
+    const h = (_: unknown, w: Workspace | null) => cb(w)
+    ipcRenderer.on('vaultData', h)
+    return () => ipcRenderer.removeListener('vaultData', h)
+  },
   statBump: (n) => ipcRenderer.send('stat:bump', n),
   collect: (id) => ipcRenderer.send('collect', id),
   windowsOnScreen: () => ipcRenderer.invoke('windows:get'),

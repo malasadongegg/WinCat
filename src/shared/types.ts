@@ -5,6 +5,7 @@ import type { BackupPick, Resolution, SnapshotList } from './backup'
 import { DEFAULT_CLIP_CONFIG, type ClipConfig } from './clipconfig'
 import { DEFAULT_HOTKEYS, type HotkeyId } from './hotkeys'
 import type { Outcome } from './overdo'
+import type { VaultStatus } from './vault'
 import type { UiSettings } from './ui'
 import type { Folder, Item, ItemInput, Workspace } from './workspace'
 import { DEFAULT_UI } from './ui'
@@ -19,13 +20,15 @@ export interface Settings {
   snapshotCapMB: number
   hotkeys: Record<HotkeyId, string>
   clipboard: ClipConfig
+  vaultAutoLockMin: number
+  vaultShowNames: boolean
   /** preferred cat window position, keyed by display id */
   placement: Record<string, { x: number; y: number }>
   companion: CompanionState
   ui: UiSettings
 }
 
-export const DEFAULT_SETTINGS: Settings = { lowPower: false, focusMode: false, catHidden: false, snapshotCapMB: 1024, hotkeys: DEFAULT_HOTKEYS, clipboard: DEFAULT_CLIP_CONFIG, placement: {}, companion: DEFAULT_COMPANION, ui: DEFAULT_UI }
+export const DEFAULT_SETTINGS: Settings = { lowPower: false, focusMode: false, catHidden: false, snapshotCapMB: 1024, hotkeys: DEFAULT_HOTKEYS, clipboard: DEFAULT_CLIP_CONFIG, vaultAutoLockMin: 5, vaultShowNames: false, placement: {}, companion: DEFAULT_COMPANION, ui: DEFAULT_UI }
 
 export interface ConfigPatch {
   personality?: Personality
@@ -78,6 +81,24 @@ export interface CatApi {
   hotkeysSet(id: HotkeyId, accelerator: string): Promise<{ hotkeys: Record<HotkeyId, string>; failed: HotkeyId[]; error?: string }>
   clipConfigGet(): Promise<ClipConfig>
   clipConfigSet(patch: Partial<ClipConfig>): Promise<ClipConfig>
+  vaultStatus(): Promise<VaultStatus>
+  vaultCreate(password: string): Promise<{ ok: boolean; recoveryKey?: string; error?: string }>
+  vaultUnlock(password: string): Promise<{ ok: boolean; error?: string }>
+  vaultUnlockRecovery(key: string): Promise<{ ok: boolean; error?: string }>
+  vaultUnlockOs(): Promise<{ ok: boolean; error?: string }>
+  vaultLock(): Promise<void>
+  vaultGet(): Promise<Workspace | null>
+  vaultSaveItem(input: ItemInput): Promise<Item | null>
+  vaultDeleteItem(id: string): Promise<void>
+  vaultSaveFolder(input: { id?: string; name: string }): Promise<Folder | null>
+  vaultDeleteFolder(id: string): Promise<void>
+  vaultChangePassword(password: string): Promise<{ ok: boolean; error?: string }>
+  vaultSetOs(on: boolean): Promise<{ ok: boolean; error?: string }>
+  vaultSetOptions(o: { autoLockMin?: number; showNames?: boolean }): Promise<void>
+  vaultDestroy(confirm: string): Promise<{ ok: boolean; error?: string }>
+  vaultCopy(text: string): Promise<void>
+  onVault(cb: (s: VaultStatus) => void): () => void
+  onVaultData(cb: (w: Workspace | null) => void): () => void
   statBump(name: string): void
   pickerHide(): void
   pickerShow(): void

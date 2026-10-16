@@ -4,6 +4,7 @@ import { readFileSync, statSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { clampToArea } from '../shared/clamp'
 import type { Settings } from '../shared/types'
+import type { ItemInput } from '../shared/workspace'
 import { CATALOG, canEquip, type Slot } from '../shared/cosmetics'
 import { PERSONALITIES, applyInteraction, levelInfo } from '../shared/companion'
 import { ClipboardService } from './clipboard/service'
@@ -17,6 +18,8 @@ import { buildBackup, mergeCompanion, mergeWorkspaces, parseBackup, resolveConfl
 import { createSnapshot, listSnapshots, readSnapshot, snapshotBytes, trimSnapshots } from './backup'
 import { decryptText, encryptText, isEnvelope, type Envelope } from './backupCrypto'
 import { TRAY_ICON_PNG_BASE64 } from './trayIcon'
+import { VaultService } from './vault'
+import { hashOf } from './clipboard/history'
 import { sanitizeClipConfig } from '../shared/clipconfig'
 import { HOTKEY_LABELS, isValidAccelerator, sanitizeHotkeys, type HotkeyId } from '../shared/hotkeys'
 import { sanitizeUi } from '../shared/ui'
@@ -34,6 +37,8 @@ let quitting = false
 let prevSeen = 0
 let clip: ClipboardService
 let work: WorkspaceService
+let vault: VaultService
+let vaultClearTimer: NodeJS.Timeout | null = null
 const overdo = new OverdoTracker()
 let lastPlatforms = '[]'
 /** hotkeys that another program already owns */
@@ -415,11 +420,10 @@ function registerIpc(): void {
   // workspace (notes + snippets)
   const text = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max) : undefined)
   ipcMain.handle('ws:get', () => ({ ws: work.get(), recovery: work.recovery }))
-  ipcMain.handle('ws:saveItem', (_e, i: unknown) => {
+  const itemInput = (i: unknown): ItemInput | null => {
     const o = (i ?? {}) as Record<string, unknown>
     if (o.kind !== 'note' && o.kind !== 'snippet') return null
-    const existed = typeof o.id === 'string' && work.get().items.some((i) => i.id === o.id)
-    const saved = work.saveItem({
+    return {
       id: typeof o.id === 'string' ? o.id : undefined,
       kind: o.kind,
       title: text(o.title, 200),
@@ -427,7 +431,13 @@ function registerIpc(): void {
       format: o.format === 'markdown' ? 'markdown' : o.format === 'text' ? 'text' : undefined,
       folderId: o.folderId === null ? null : typeof o.folderId === 'string' ? o.folderId : undefined,
       favorite: typeof o.favorite === 'boolean' ? o.favorite : undefined
-    })
+    }
+  }
+  ipcMain.handle('ws:saveItem', (_e, i: unknown) => {
+    const input = itemInput(i)
+    if (!input) return null
+    const existed = typeof input.id === 'string' && work.get().items.some((x) => x.id === input.id)
+    const saved = work.saveItem(input)
     if (!existed) bump(saved.kind === 'note' ? 'noteCreated' : 'snippetCreated')
     return saved
   })
@@ -438,6 +448,56 @@ function registerIpc(): void {
     return name === undefined ? null : work.saveFolder({ id: typeof o.id === 'string' ? o.id : undefined, name })
   })
   ipcMain.handle('ws:deleteFolder', (_e, id: unknown) => { if (typeof id === 'string') work.removeFolder(id) })
+  // ---- private vault ----
+  const run = <T,>(fn: () => T): { ok: boolean; error?: string } & Partial<T extends object ? T : object> => {
+    try {
+      const r = fn()
+      return { ok: true, ...((r && typeof r === 'object' ? r : {}) as object) } as never
+    } catch (e) {
+      return { ok: false, error: (e as Error).message } as never
+    }
+  }
+  ipcMain.handle('vault:status', () => vault.status())
+  ipcMain.handle('vault:create', (_e, pw: unknown) => run(() => vault.create(typeof pw === 'string' ? pw : '')))
+  ipcMain.handle('vault:unlock', (_e, pw: unknown) => run(() => vault.unlock(typeof pw === 'string' ? pw : '')))
+  ipcMain.handle('vault:unlockRecovery', (_e, k: unknown) => run(() => vault.unlockRecovery(typeof k === 'string' ? k : '')))
+  ipcMain.handle('vault:unlockOs', () => run(() => vault.unlockOs()))
+  ipcMain.handle('vault:lock', () => vault.lock())
+  ipcMain.handle('vault:get', () => { const d = vault.data(); if (d) vault.touch(); return d })
+  // a save that races an auto-lock is ignored quietly (the page switches to the lock screen)
+  ipcMain.handle('vault:saveItem', (_e, i: unknown) => { const input = itemInput(i); try { return input ? vault.saveItem(input) : null } catch { return null } })
+  ipcMain.handle('vault:deleteItem', (_e, id: unknown) => { try { if (typeof id === 'string') vault.removeItem(id) } catch { /* locked */ } })
+  ipcMain.handle('vault:saveFolder', (_e, f: unknown) => {
+    const o = (f ?? {}) as Record<string, unknown>
+    const name = text(o.name, 60)
+    try { return name === undefined ? null : vault.saveFolder({ id: typeof o.id === 'string' ? o.id : undefined, name }) } catch { return null }
+  })
+  ipcMain.handle('vault:deleteFolder', (_e, id: unknown) => { try { if (typeof id === 'string') vault.removeFolder(id) } catch { /* locked */ } })
+  ipcMain.handle('vault:changePassword', (_e, pw: unknown) => run(() => vault.changePassword(typeof pw === 'string' ? pw : '')))
+  ipcMain.handle('vault:setOs', (_e, on: unknown) => run(() => vault.setOs(on === true)))
+  ipcMain.handle('vault:setOptions', (_e, o: unknown) => {
+    const v = (o ?? {}) as { autoLockMin?: unknown; showNames?: unknown }
+    vault.setOptions({ autoLockMin: typeof v.autoLockMin === 'number' ? v.autoLockMin : undefined, showNames: typeof v.showNames === 'boolean' ? v.showNames : undefined })
+    settings.vaultAutoLockMin = vault.autoLockMin
+    settings.vaultShowNames = vault.showNames
+    saveSettings(settings)
+  })
+  ipcMain.handle('vault:destroy', (_e, c: unknown) => run(() => { if (c !== 'DELETE') throw new Error('Type DELETE to confirm'); vault.destroy() }))
+  // copying private text: it is not captured into clipboard history, and is wiped from the clipboard after 30 s
+  ipcMain.handle('vault:copy', async (_e, t: unknown) => {
+    if (typeof t !== 'string' || !vault.data()) return
+    vault.touch()
+    await clip.copyText(t.slice(0, 500_000))
+    const h = hashOf(t)
+    if (vaultClearTimer) clearTimeout(vaultClearTimer)
+    vaultClearTimer = setTimeout(async () => {
+      try {
+        const items = await (await import('electron')).clipboard.read()
+        const cur = items[0] && items[0].types.includes('text/plain') ? await (await items[0].getType('text/plain')).text() : ''
+        if (cur && hashOf(cur) === h) await clip.copyText('')
+      } catch { /* clipboard busy: leave it */ }
+    }, 30_000)
+  })
   ipcMain.handle('clip:copyText', (_e, t: unknown) => { if (typeof t === 'string') return clip.copyText(t.slice(0, 500_000)) })
 
   // backup / restore / snapshots
@@ -594,6 +654,13 @@ app.whenReady().then(() => {
     if (pickerWin && !pickerWin.isDestroyed()) pickerWin.webContents.send('ws', w)
   })
   work.load()
+  vault = new VaultService(
+    (s) => panelWin?.webContents.send('vault', s),
+    (w) => panelWin?.webContents.send('vaultData', w)
+  )
+  vault.autoLockMin = settings.vaultAutoLockMin
+  vault.showNames = settings.vaultShowNames
+  vault.load()
   registerIpc()
   createPetWindow()
   createPanelWindow()
@@ -633,6 +700,7 @@ app.on('will-quit', () => {
   settings.companion.lastSeen = Date.now()
   saveSettings(settings)
   globalShortcut.unregisterAll()
+  vault?.lock()
   work?.flush()
   clip?.stop()
   clip?.clear()
