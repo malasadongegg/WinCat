@@ -1,6 +1,7 @@
 import { DEFAULT_UI, type Theme, type UiSettings } from '@shared/ui'
 import { useEffect, useState } from 'react'
 import { BackupCard } from './BackupCard'
+import { ShortcutsCard } from './ShortcutsCard'
 
 interface Props {
   ui: UiSettings
@@ -50,6 +51,7 @@ export function SettingsPage({ ui, onUi, lowPower, onLowPower }: Props) {
         <p className="hint">Keyboard: <kbd>Ctrl</kbd>+<kbd>K</kbd> search &middot; <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>C</kbd> open/close &middot; <kbd>Esc</kbd> close. Click the cat for care, double-click it for this desk.</p>
         <button onClick={() => onUi(DEFAULT_UI)}>Reset appearance</button>
       </div>
+      <ShortcutsCard />
       <BackupCard />
     </div>
   )
