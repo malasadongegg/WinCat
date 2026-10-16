@@ -1,6 +1,7 @@
 import type { ClipState } from './clipboard'
 import type { Cosmetics } from './cosmetics'
 import type { RoomItem, RoomOffer, RoomSize, RoomStyle } from './catlife'
+import type { BackupPick, Resolution, SnapshotList } from './backup'
 import type { Outcome } from './overdo'
 import type { UiSettings } from './ui'
 import type { Folder, Item, ItemInput, Workspace } from './workspace'
@@ -10,13 +11,15 @@ import { DEFAULT_COMPANION, type CompanionState, type Interaction, type Personal
 export interface Settings {
   lowPower: boolean
   catHidden: boolean
+  /** size cap for automatic local snapshots */
+  snapshotCapMB: number
   /** preferred cat window position, keyed by display id */
   placement: Record<string, { x: number; y: number }>
   companion: CompanionState
   ui: UiSettings
 }
 
-export const DEFAULT_SETTINGS: Settings = { lowPower: false, catHidden: false, placement: {}, companion: DEFAULT_COMPANION, ui: DEFAULT_UI }
+export const DEFAULT_SETTINGS: Settings = { lowPower: false, catHidden: false, snapshotCapMB: 1024, placement: {}, companion: DEFAULT_COMPANION, ui: DEFAULT_UI }
 
 export interface ConfigPatch {
   personality?: Personality
@@ -54,6 +57,15 @@ export interface CatApi {
   onCompanion(cb: (c: CompanionState) => void): () => void
   getMetrics(): Promise<Metrics>
   companionGet(): Promise<CompanionState>
+  backupExport(password: string): Promise<{ ok: boolean; canceled?: boolean; path?: string; encrypted?: boolean; error?: string }>
+  backupPick(): Promise<BackupPick>
+  backupUnlock(password: string): Promise<BackupPick>
+  backupApply(mode: 'merge' | 'replace', choices: Record<string, Resolution>): Promise<{ ok: boolean; error?: string }>
+  backupCancel(): void
+  snapshotsList(): Promise<SnapshotList>
+  snapshotsCreate(): Promise<SnapshotList>
+  snapshotsRestore(name: string): Promise<{ ok: boolean; error?: string }>
+  snapshotsSetCap(mb: number): Promise<SnapshotList>
   statBump(name: string): void
   pickerHide(): void
   pickerShow(): void

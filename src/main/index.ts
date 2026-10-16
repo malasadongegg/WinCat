@@ -1,4 +1,6 @@
-import { app, BrowserWindow, Menu, Tray, globalShortcut, ipcMain, nativeImage, screen } from 'electron'
+import { app, BrowserWindow, Menu, Tray, dialog, globalShortcut, ipcMain, nativeImage, screen } from 'electron'
+import { randomUUID } from 'crypto'
+import { readFileSync, statSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { clampToArea } from '../shared/clamp'
 import type { Settings } from '../shared/types'
@@ -11,6 +13,9 @@ import { OverdoTracker, awardsBond } from '../shared/overdo'
 import { COLLECTIBLES, ROOM_DIMS, isStat, newlyUnlocked, sanitizeRoom, sanitizeRoomStyle, type StatName } from '../shared/catlife'
 import { listWindowTops, type WinTop } from './windows'
 import { WorkspaceService } from './workspace'
+import { buildBackup, mergeCompanion, mergeWorkspaces, parseBackup, resolveConflicts, summarize, type BackupData, type BackupPick, type Resolution, type SnapshotList } from '../shared/backup'
+import { createSnapshot, listSnapshots, readSnapshot, snapshotBytes, trimSnapshots } from './backup'
+import { decryptText, encryptText, isEnvelope, type Envelope } from './backupCrypto'
 import { sanitizeUi } from '../shared/ui'
 
 const PANEL_SIZE = { width: 900, height: 600 }
@@ -28,6 +33,9 @@ let clip: ClipboardService
 let work: WorkspaceService
 const overdo = new OverdoTracker()
 let lastPlatforms = '[]'
+/** a backup file the user picked and is reviewing (kept in memory only until applied or cancelled) */
+let pendingBackup: BackupData | null = null
+let pendingEnvelope: Envelope | null = null
 /** last cat position reported by the overlay, in screen coordinates */
 let catPos: { x: number; y: number } | null = null
 let lastSaved = { x: -9999 }
@@ -214,6 +222,56 @@ function pollWindows(): void {
   }
 }
 
+const currentBackup = () => buildBackup(work.get(), settings.companion, settings.ui)
+const capBytes = () => Math.max(50, Math.min(10_240, settings.snapshotCapMB)) * 1024 * 1024
+
+function snapshotList(): SnapshotList {
+  return { items: listSnapshots().slice(0, 30), usedBytes: snapshotBytes(), capMB: settings.snapshotCapMB }
+}
+
+/** a quiet daily safety copy (and one before any restore) */
+function autoSnapshot(): void {
+  try {
+    const newest = listSnapshots()[0]
+    if (!newest || Date.now() - newest.createdAt > 24 * 3_600_000) {
+      work.flush()
+      createSnapshot(currentBackup(), 'auto')
+      trimSnapshots(capBytes())
+    }
+  } catch (e) {
+    console.error('auto snapshot failed', (e as Error).message)
+  }
+}
+
+function previewOf(data: BackupData): BackupPick {
+  const { conflicts } = mergeWorkspaces(work.get(), data.workspace)
+  const clip = (t: string) => t.replace(/\s+/g, ' ').slice(0, 90)
+  return {
+    summary: summarize(data),
+    conflicts: conflicts.map((c) => ({ id: c.id, title: c.current.title || c.incoming.title || 'Untitled', mine: c.current.updatedAt, theirs: c.incoming.updatedAt, mineText: clip(c.current.body), theirText: clip(c.incoming.body) }))
+  }
+}
+
+/** restore a backup. A safety snapshot of the current state is always taken first. */
+function applyBackup(data: BackupData, mode: 'merge' | 'replace', choices: Record<string, Resolution>): void {
+  work.flush()
+  createSnapshot(currentBackup(), 'before-restore')
+  trimSnapshots(capBytes())
+  if (mode === 'replace') {
+    work.replace(data.workspace)
+    settings.companion = { ...data.companion, lastSeen: settings.companion.lastSeen }
+    settings.ui = data.ui
+  } else {
+    const { ws, conflicts } = mergeWorkspaces(work.get(), data.workspace)
+    work.replace(resolveConflicts(ws, conflicts, choices, randomUUID))
+    settings.companion = mergeCompanion(settings.companion, data.companion)
+  }
+  work.flush()
+  broadcast('ui', settings.ui)
+  companionChanged()
+  refreshTray()
+}
+
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
 const isId = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v)
 const sender = (e: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent) => BrowserWindow.fromWebContents(e.sender)
@@ -355,6 +413,100 @@ function registerIpc(): void {
   ipcMain.handle('ws:deleteFolder', (_e, id: unknown) => { if (typeof id === 'string') work.removeFolder(id) })
   ipcMain.handle('clip:copyText', (_e, t: unknown) => { if (typeof t === 'string') return clip.copyText(t.slice(0, 500_000)) })
 
+  // backup / restore / snapshots
+  ipcMain.handle('backup:export', async (_e, pw: unknown) => {
+    try {
+      const password = typeof pw === 'string' ? pw : ''
+      const plain = JSON.stringify(currentBackup())
+      const text = password ? JSON.stringify(encryptText(plain, password)) : plain
+      const d = new Date()
+      const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      const r = await dialog.showSaveDialog(panelWin ?? undefined!, {
+        title: 'Save backup',
+        defaultPath: `WinCatBackup-${stamp}${password ? '-encrypted' : ''}.json`,
+        filters: [{ name: 'Cat Companion backup', extensions: ['json'] }]
+      })
+      if (r.canceled || !r.filePath) return { ok: false, canceled: true }
+      writeFileSync(r.filePath, text)
+      return { ok: true, path: r.filePath, encrypted: !!password }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message }
+    }
+  })
+  ipcMain.handle('backup:pick', async (): Promise<BackupPick> => {
+    pendingBackup = null
+    pendingEnvelope = null
+    const r = await dialog.showOpenDialog(panelWin ?? undefined!, { title: 'Choose a backup', properties: ['openFile'], filters: [{ name: 'Cat Companion backup', extensions: ['json'] }] })
+    if (r.canceled || !r.filePaths[0]) return { canceled: true }
+    try {
+      if (statSync(r.filePaths[0]).size > 64 * 1024 * 1024) return { error: 'That file is too large to be a backup.' }
+      const raw = JSON.parse(readFileSync(r.filePaths[0], 'utf8'))
+      if (isEnvelope(raw)) {
+        pendingEnvelope = raw
+        return { needsPassword: true }
+      }
+      const data = parseBackup(raw)
+      if (!data) return { error: 'This file is not a Cat Companion backup.' }
+      pendingBackup = data
+      return previewOf(data)
+    } catch {
+      return { error: 'Could not read that file.' }
+    }
+  })
+  ipcMain.handle('backup:unlock', (_e, pw: unknown): BackupPick => {
+    if (!pendingEnvelope || typeof pw !== 'string') return { error: 'Choose a backup file first.' }
+    try {
+      const data = parseBackup(JSON.parse(decryptText(pendingEnvelope, pw)))
+      if (!data) return { error: 'This file is not a Cat Companion backup.' }
+      pendingBackup = data
+      pendingEnvelope = null
+      return previewOf(data)
+    } catch (e) {
+      return { needsPassword: true, error: (e as Error).message }
+    }
+  })
+  ipcMain.handle('backup:apply', (_e, mode: unknown, choices: unknown) => {
+    if (!pendingBackup) return { ok: false, error: 'No backup is selected.' }
+    if (mode !== 'merge' && mode !== 'replace') return { ok: false, error: 'Unknown restore mode.' }
+    const clean: Record<string, Resolution> = {}
+    if (choices && typeof choices === 'object') {
+      for (const [k, v] of Object.entries(choices as Record<string, unknown>)) if (v === 'mine' || v === 'backup' || v === 'both') clean[k] = v
+    }
+    try {
+      applyBackup(pendingBackup, mode, clean)
+      pendingBackup = null
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message }
+    }
+  })
+  ipcMain.on('backup:cancel', () => { pendingBackup = null; pendingEnvelope = null })
+  ipcMain.handle('snapshots:list', () => snapshotList())
+  ipcMain.handle('snapshots:create', () => {
+    work.flush()
+    createSnapshot(currentBackup(), 'manual')
+    trimSnapshots(capBytes())
+    return snapshotList()
+  })
+  ipcMain.handle('snapshots:restore', (_e, name: unknown) => {
+    const data = typeof name === 'string' ? readSnapshot(name) : null
+    if (!data) return { ok: false, error: 'That snapshot could not be read.' }
+    try {
+      applyBackup(data, 'replace', {})
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message }
+    }
+  })
+  ipcMain.handle('snapshots:setCap', (_e, mb: unknown) => {
+    if (isNum(mb)) {
+      settings.snapshotCapMB = Math.round(Math.max(50, Math.min(10_240, mb)))
+      saveSettings(settings)
+      trimSnapshots(capBytes())
+    }
+    return snapshotList()
+  })
+
   // appearance / accessibility
   ipcMain.handle('ui:get', () => settings.ui)
   ipcMain.handle('ui:set', (_e, patch: unknown) => {
@@ -414,6 +566,8 @@ app.whenReady().then(() => {
   }, 2000)
 
   setInterval(pollWindows, 1000)
+  setTimeout(autoSnapshot, 30_000)
+  setInterval(autoSnapshot, 6 * 3_600_000)
 
   // keep the overlay covering the primary display's work area
   const refit = () => petWin?.setBounds(primary().workArea)

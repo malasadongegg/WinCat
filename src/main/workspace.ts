@@ -68,6 +68,11 @@ export class WorkspaceService {
     return r.item
   }
 
+  /** replace everything (used by restore); the previous state is snapshotted by the caller first */
+  replace(ws: Workspace): void {
+    this.commit(normalize(ws))
+  }
+
   removeItem(id: string): void {
     this.commit(deleteItem(this.ws, id))
   }
