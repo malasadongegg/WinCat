@@ -16,6 +16,7 @@ import { WorkspaceService } from './workspace'
 import { buildBackup, mergeCompanion, mergeWorkspaces, parseBackup, resolveConflicts, summarize, type BackupData, type BackupPick, type Resolution, type SnapshotList } from '../shared/backup'
 import { createSnapshot, listSnapshots, readSnapshot, snapshotBytes, trimSnapshots } from './backup'
 import { decryptText, encryptText, isEnvelope, type Envelope } from './backupCrypto'
+import { TRAY_ICON_PNG_BASE64 } from './trayIcon'
 import { sanitizeUi } from '../shared/ui'
 
 const PANEL_SIZE = { width: 900, height: 600 }
@@ -188,10 +189,8 @@ function refreshTray(): void {
 }
 
 function createTray(): void {
-  // Placeholder icon generated in code (BGRA purple square) until a real asset exists.
-  const buf = Buffer.alloc(16 * 16 * 4)
-  for (let i = 0; i < 256; i++) buf.set([0xff, 0x5c, 0x7c, 0xff], i * 4)
-  tray = new Tray(nativeImage.createFromBitmap(buf, { width: 16, height: 16 }))
+  const icon = nativeImage.createFromDataURL('data:image/png;base64,' + TRAY_ICON_PNG_BASE64)
+  tray = new Tray(icon.resize({ width: 16, height: 16, quality: 'best' }))
   tray.setToolTip('Windows Cat Companion')
   tray.on('click', togglePanel)
   refreshTray()
@@ -481,6 +480,12 @@ function registerIpc(): void {
     }
   })
   ipcMain.on('backup:cancel', () => { pendingBackup = null; pendingEnvelope = null })
+  // launch at sign-in: off by default, only offered for the installed app (never registers the dev build)
+  ipcMain.handle('login:get', () => ({ available: app.isPackaged, enabled: app.isPackaged ? app.getLoginItemSettings().openAtLogin : false }))
+  ipcMain.handle('login:set', (_e, on: unknown) => {
+    if (typeof on === 'boolean' && app.isPackaged) app.setLoginItemSettings({ openAtLogin: on })
+    return { available: app.isPackaged, enabled: app.isPackaged ? app.getLoginItemSettings().openAtLogin : false }
+  })
   ipcMain.handle('snapshots:list', () => snapshotList())
   ipcMain.handle('snapshots:create', () => {
     work.flush()

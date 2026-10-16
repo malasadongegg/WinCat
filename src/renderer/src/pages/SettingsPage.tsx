@@ -1,4 +1,5 @@
 import { DEFAULT_UI, type Theme, type UiSettings } from '@shared/ui'
+import { useEffect, useState } from 'react'
 import { BackupCard } from './BackupCard'
 
 interface Props {
@@ -9,6 +10,8 @@ interface Props {
 }
 
 export function SettingsPage({ ui, onUi, lowPower, onLowPower }: Props) {
+  const [login, setLogin] = useState<{ available: boolean; enabled: boolean } | null>(null)
+  useEffect(() => { window.cat.loginGet().then(setLogin) }, [])
   return (
     <div>
       <div className="row page-head"><h1>Settings</h1></div>
@@ -39,6 +42,10 @@ export function SettingsPage({ ui, onUi, lowPower, onLowPower }: Props) {
         <h2>Accessibility &amp; performance</h2>
         <label className="row"><input type="checkbox" checked={ui.reduceMotion} onChange={(e) => onUi({ reduceMotion: e.target.checked })} /> Reduce motion (also calms the cat&rsquo;s idle animation)</label>
         <label className="row"><input type="checkbox" checked={ui.largeTargets} onChange={(e) => onUi({ largeTargets: e.target.checked })} /> Larger buttons and fields</label>
+        <label className="row">
+          <input type="checkbox" checked={login?.enabled ?? false} disabled={!login?.available} onChange={async (e) => setLogin(await window.cat.loginSet(e.target.checked))} />
+          Start Cat Companion when I sign in to Windows {login && !login.available && <span className="hint">(available in the installed app)</span>}
+        </label>
         <label className="row"><input type="checkbox" checked={lowPower} onChange={(e) => onLowPower(e.target.checked)} /> Low-power mode</label>
         <p className="hint">Keyboard: <kbd>Ctrl</kbd>+<kbd>K</kbd> search &middot; <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>C</kbd> open/close &middot; <kbd>Esc</kbd> close. Click the cat for care, double-click it for this desk.</p>
         <button onClick={() => onUi(DEFAULT_UI)}>Reset appearance</button>

@@ -66,6 +66,8 @@ export interface CatApi {
   snapshotsCreate(): Promise<SnapshotList>
   snapshotsRestore(name: string): Promise<{ ok: boolean; error?: string }>
   snapshotsSetCap(mb: number): Promise<SnapshotList>
+  loginGet(): Promise<{ available: boolean; enabled: boolean }>
+  loginSet(on: boolean): Promise<{ available: boolean; enabled: boolean }>
   statBump(name: string): void
   pickerHide(): void
   pickerShow(): void
