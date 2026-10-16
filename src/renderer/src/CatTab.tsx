@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
 import { PERSONALITIES, levelInfo, type CompanionState, type Interaction, type Personality } from '@shared/companion'
 import { CATALOG, type Slot } from '@shared/cosmetics'
-import { ACHIEVEMENTS, COLLECTIBLES, FURNITURE, MAX_ROOM_ITEMS, seasonOf } from '@shared/catlife'
+import { ACHIEVEMENTS, COLLECTIBLES, FURNITURE, MAX_ROOM_ITEMS, ROOM_DIMS, ROOM_OFFER_LEVEL, ROOM_OPTIONS, seasonOf, type RoomSize, type RoomSlot } from '@shared/catlife'
 import type { ConfigPatch } from '@shared/types'
 import { spriteUrl } from './cat/items'
+import { PixelCat } from './cat/PixelCat'
+import { RoomArt, roomWorld } from './cat/RoomArt'
+import { furnitureSize, spriteKey } from './cat/furniture'
 
 interface Props {
   companion: CompanionState
@@ -15,7 +18,18 @@ const SLOTS: Array<{ slot: Slot; title: string }> = [
   { slot: 'collar', title: 'Collar' },
   { slot: 'eyes', title: 'Eyes' },
   { slot: 'fur', title: 'Fur' },
-  { slot: 'hat', title: 'Accessory' }
+  { slot: 'hat', title: 'Headwear' },
+  { slot: 'neck', title: 'Neckwear' }
+]
+
+const ROOM_SLOTS: Array<{ slot: RoomSlot; title: string }> = [
+  { slot: 'wall', title: 'Wallpaper' },
+  { slot: 'floor', title: 'Floor' },
+  { slot: 'window', title: 'Window' },
+  { slot: 'rug', title: 'Rug' },
+  { slot: 'art', title: 'Wall art' },
+  { slot: 'plant', title: 'Plant' },
+  { slot: 'lamp', title: 'Lamp' }
 ]
 
 const SECTIONS = ['Overview', 'Wardrobe', 'Room', 'Collection', 'Achievements'] as const
@@ -140,6 +154,55 @@ export function CatTab({ companion: c, onInteract, onConfig }: Props) {
       {section === 'Room' && (
         <div>
           <div className="card">
+            <h2>The cat&rsquo;s own room</h2>
+            {lv.level < ROOM_OFFER_LEVEL ? (
+              <p className="hint">Your cat will ask for a room of its own once you reach bond level {ROOM_OFFER_LEVEL}.</p>
+            ) : (
+              <>
+                <p className="hint">
+                  {c.roomMode
+                    ? 'Your cat lives in its room: a framed box on your desktop. Drag its title bar to move it.'
+                    : c.roomOffer === 'unasked'
+                      ? 'Your cat would love a room of its own! It would live inside a little framed box on your desktop instead of wandering over everything.'
+                      : 'Give your cat a cozy room to live in, or let it roam the whole desktop. You can switch any time.'}
+                </p>
+                <div className="row wrap">
+                  {c.roomMode ? (
+                    <button onClick={() => onConfig({ roomMode: false })}>Let the cat roam the desktop</button>
+                  ) : (
+                    <button className="primary" onClick={() => onConfig({ roomMode: true })}>{c.roomOffer === 'unasked' ? 'Yes, give the cat a room!' : 'Move the cat into its room'}</button>
+                  )}
+                  {c.roomMode && <button onClick={() => onConfig({ roomPos: null })}>Reset position</button>}
+                </div>
+              </>
+            )}
+            <h2>Size</h2>
+            <div className="seg" role="group" aria-label="Room size">
+              {(['small', 'medium', 'large'] as RoomSize[]).map((z) => (
+                <button key={z} className={c.roomSize === z ? 'on' : ''} aria-pressed={c.roomSize === z} onClick={() => onConfig({ roomSize: z })}>{z[0].toUpperCase() + z.slice(1)}</button>
+              ))}
+            </div>
+            <h2 className="spaced-h">Preview</h2>
+            <RoomPreview c={c} />
+            {ROOM_SLOTS.map(({ slot, title }) => (
+              <div key={slot} className="slot" role="group" aria-label={title}>
+                <span className="slot-name">{title}</span>
+                <div className="row wrap">
+                  {ROOM_OPTIONS[slot].map((o) => {
+                    const locked = o.level > lv.level
+                    const on = c.roomStyle[slot] === o.id
+                    return (
+                      <button key={o.id} className={'chip' + (on ? ' on' : '')} aria-pressed={on} disabled={locked} title={locked ? `Unlocks at level ${o.level}` : o.label} onClick={() => onConfig({ roomStyle: { [slot]: o.id } })}>
+                        {o.label}
+                        {locked && <span className="lock"> Lv {o.level}</span>}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="card">
             <h2>Furniture &amp; toys</h2>
             <p className="hint">Place things on your desktop floor. Your cat visits them: naps in the bed, hides in the box, scratches the post and bats the ball. ({c.room.length}/{MAX_ROOM_ITEMS} placed)</p>
             <div className="furn-grid">
@@ -217,6 +280,48 @@ export function CatTab({ companion: c, onInteract, onConfig }: Props) {
           </ul>
         </div>
       )}
+    </div>
+  )
+}
+
+/** a small live picture of the cat's room: the art, your furniture and the cat itself */
+function RoomPreview({ c }: { c: CompanionState }) {
+  const dims = ROOM_DIMS[c.roomSize]
+  const w = roomWorld(dims.w, dims.h)
+  const k = 0.62
+  return (
+    <div className="room-preview" style={{ width: dims.w * k, height: dims.h * k }} aria-label="Room preview" role="img">
+      <div style={{ transform: `scale(${k})`, transformOrigin: '0 0', width: dims.w, height: dims.h }}>
+        <RoomArt style={c.roomStyle} w={dims.w} h={dims.h} hour={new Date().getHours()}>
+          {c.room.map((r) => {
+            const s = furnitureSize(r.type)
+            return (
+              <img
+                key={r.id}
+                src={spriteUrl(spriteKey(r.type))}
+                alt=""
+                draggable={false}
+                style={{ position: 'absolute', imageRendering: 'pixelated', left: r.x * w.width - s.w / 2, top: w.height - s.h, width: s.w, height: s.h }}
+              />
+            )
+          })}
+          <div style={{ position: 'absolute', left: w.width / 2 - 48, top: w.height - 96, width: 96, height: 96 }}>
+            <PixelCat anim="sit" effect="none" personality={c.personality} cosmetics={c.cosmetics} lowPower />
+          </div>
+          {c.room.filter((r) => r.type === 'box').map((r) => {
+            const bf = furnitureSize('boxFront')
+            return (
+              <img
+                key={'f' + r.id}
+                src={spriteUrl('boxFront')}
+                alt=""
+                draggable={false}
+                style={{ position: 'absolute', imageRendering: 'pixelated', left: r.x * w.width - bf.w / 2, top: w.height - bf.h, width: bf.w }}
+              />
+            )
+          })}
+        </RoomArt>
+      </div>
     </div>
   )
 }
