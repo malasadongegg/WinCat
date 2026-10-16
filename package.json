@@ -71,7 +71,8 @@
       "createStartMenuShortcut": true,
       "shortcutName": "Windows Cat Companion",
       "deleteAppDataOnUninstall": false,
-      "artifactName": "WindowsCatCompanion-Setup-${version}.${ext}"
+      "artifactName": "WindowsCatCompanion-Setup-${version}.${ext}",
+      "include": "build/installer.nsh"
     },
     "portable": {
       "artifactName": "WindowsCatCompanion-Portable-${version}.${ext}"
