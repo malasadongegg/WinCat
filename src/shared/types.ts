@@ -1,6 +1,6 @@
 import type { ClipState } from './clipboard'
 import type { Cosmetics } from './cosmetics'
-import type { RoomItem } from './catlife'
+import type { RoomItem, RoomOffer, RoomSize, RoomStyle } from './catlife'
 import type { Outcome } from './overdo'
 import type { UiSettings } from './ui'
 import type { Folder, Item, ItemInput, Workspace } from './workspace'
@@ -26,6 +26,11 @@ export interface ConfigPatch {
   cosmetics?: Partial<Cosmetics>
   perch?: boolean
   room?: RoomItem[]
+  roomMode?: boolean
+  roomOffer?: RoomOffer
+  roomStyle?: Partial<RoomStyle>
+  roomSize?: RoomSize
+  roomPos?: { x: number; y: number } | null
 }
 
 export type PanelState = 'collapsed' | 'expanded'
@@ -50,6 +55,8 @@ export interface CatApi {
   getMetrics(): Promise<Metrics>
   companionGet(): Promise<CompanionState>
   statBump(name: string): void
+  pickerHide(): void
+  pickerShow(): void
   collect(id: string): void
   windowsOnScreen(): Promise<Array<{ id: number; left: number; right: number; top: number }>>
   onPlatforms(cb: (p: Array<{ id: number; left: number; right: number; top: number }>) => void): () => void

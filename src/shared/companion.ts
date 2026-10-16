@@ -1,5 +1,6 @@
 import { DEFAULT_COSMETICS, type Cosmetics } from './cosmetics'
-import type { RoomItem } from './catlife'
+import type { RoomItem, RoomOffer, RoomSize, RoomStyle } from './catlife'
+import { DEFAULT_ROOM_STYLE } from './catlife'
 
 export const PERSONALITIES = ['balanced', 'playful', 'curious', 'affectionate', 'sleepy'] as const
 export type Personality = (typeof PERSONALITIES)[number]
@@ -28,6 +29,13 @@ export interface CompanionState {
   collection: Record<string, number>
   /** placed furniture */
   room: RoomItem[]
+  /** the cat lives inside its own framed room instead of roaming the desktop (opt-in) */
+  roomMode: boolean
+  roomOffer: RoomOffer
+  roomStyle: RoomStyle
+  roomSize: RoomSize
+  /** top-left of the room on screen; null = default spot above the taskbar */
+  roomPos: { x: number; y: number } | null
   bond: number
   pets: number
   treats: number
@@ -47,6 +55,11 @@ export const DEFAULT_COMPANION: CompanionState = {
   achievements: {},
   collection: {},
   room: [],
+  roomMode: false,
+  roomOffer: 'unasked',
+  roomStyle: DEFAULT_ROOM_STYLE,
+  roomSize: 'medium',
+  roomPos: null,
   bond: 0,
   pets: 0,
   treats: 0,

@@ -122,10 +122,97 @@ export function sanitizeRoom(raw: unknown, level: number): RoomItem[] {
   return out
 }
 
+// ---------- the cat's own room (opt-in) ----------
+export type RoomSlot = 'wall' | 'floor' | 'window' | 'rug' | 'art' | 'plant' | 'lamp'
+
+export interface RoomOption {
+  id: string
+  label: string
+  /** bond level needed */
+  level: number
+}
+
+export const ROOM_OPTIONS: Record<RoomSlot, RoomOption[]> = {
+  wall: [
+    { id: 'cream', label: 'Cream', level: 1 },
+    { id: 'mint', label: 'Mint', level: 1 },
+    { id: 'sky', label: 'Sky blue', level: 2 },
+    { id: 'blush', label: 'Blush', level: 2 },
+    { id: 'stripes', label: 'Stripes', level: 3 },
+    { id: 'dots', label: 'Polka dots', level: 4 },
+    { id: 'night', label: 'Starry night', level: 5 },
+    { id: 'forest', label: 'Forest', level: 6 }
+  ],
+  floor: [
+    { id: 'wood', label: 'Wood', level: 1 },
+    { id: 'light', label: 'Light wood', level: 2 },
+    { id: 'tile', label: 'Tiles', level: 3 },
+    { id: 'carpet', label: 'Carpet', level: 4 },
+    { id: 'dark', label: 'Dark wood', level: 5 }
+  ],
+  window: [
+    { id: 'auto', label: 'Follows the clock', level: 1 },
+    { id: 'day', label: 'Sunny day', level: 1 },
+    { id: 'sunset', label: 'Sunset', level: 2 },
+    { id: 'night', label: 'Night sky', level: 2 },
+    { id: 'snow', label: 'Snowfall', level: 4 }
+  ],
+  rug: [
+    { id: 'none', label: 'None', level: 1 },
+    { id: 'red', label: 'Red rug', level: 2 },
+    { id: 'blue', label: 'Blue rug', level: 3 },
+    { id: 'paw', label: 'Paw rug', level: 5 }
+  ],
+  art: [
+    { id: 'none', label: 'None', level: 1 },
+    { id: 'fish', label: 'Fish poster', level: 2 },
+    { id: 'frame', label: 'Picture', level: 3 },
+    { id: 'clock', label: 'Wall clock', level: 4 },
+    { id: 'garland', label: 'Garland', level: 5 }
+  ],
+  plant: [
+    { id: 'none', label: 'None', level: 1 },
+    { id: 'sprout', label: 'Sprout', level: 2 },
+    { id: 'cactus', label: 'Cactus', level: 3 },
+    { id: 'fern', label: 'Fern', level: 5 }
+  ],
+  lamp: [
+    { id: 'none', label: 'None', level: 1 },
+    { id: 'desk', label: 'Cozy lamp', level: 3 }
+  ]
+}
+
+export type RoomStyle = Record<RoomSlot, string>
+
+export const DEFAULT_ROOM_STYLE: RoomStyle = { wall: 'cream', floor: 'wood', window: 'auto', rug: 'none', art: 'none', plant: 'none', lamp: 'none' }
+
+export type RoomSize = 'small' | 'medium' | 'large'
+export const ROOM_DIMS: Record<RoomSize, { w: number; h: number }> = {
+  small: { w: 420, h: 260 },
+  medium: { w: 560, h: 320 },
+  large: { w: 720, h: 380 }
+}
+
+/** the cat is asked once whether it may have its own room; never nagged afterwards */
+export type RoomOffer = 'unasked' | 'accepted' | 'declined'
+export const ROOM_OFFER_LEVEL = 2
+
+/** Keep only known options unlocked at this level; anything else keeps its previous value. */
+export function sanitizeRoomStyle(raw: unknown, level: number, base: RoomStyle = DEFAULT_ROOM_STYLE): RoomStyle {
+  const r = (raw ?? {}) as Record<string, unknown>
+  const out: RoomStyle = { ...base }
+  for (const slot of Object.keys(ROOM_OPTIONS) as RoomSlot[]) {
+    const id = r[slot]
+    const opt = typeof id === 'string' ? ROOM_OPTIONS[slot].find((o) => o.id === id) : undefined
+    if (opt && opt.level <= level) out[slot] = opt.id
+  }
+  return out
+}
+
 // ---------- stats & achievements ----------
 export const STAT_NAMES = [
   'puke', 'annoyed', 'hyper', 'perch', 'chase', 'nap', 'found',
-  'bedUse', 'boxUse', 'postUse', 'ballUse', 'noteCreated', 'snippetCreated', 'furniturePlaced'
+  'bedUse', 'boxUse', 'postUse', 'ballUse', 'noteCreated', 'snippetCreated', 'furniturePlaced', 'roomMoved', 'roomStyled'
 ] as const
 export type StatName = (typeof STAT_NAMES)[number]
 
@@ -161,7 +248,9 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'snipper', title: 'Handy snippets', desc: 'Save 5 snippets.', done: (c) => st(c, 'snippetCreated') >= 5 },
   { id: 'decorator', title: 'Interior designer', desc: 'Place some furniture.', done: (c) => st(c, 'furniturePlaced') >= 1 },
   { id: 'cozy', title: 'Cozy corner', desc: 'Watch your cat use its bed.', done: (c) => st(c, 'bedUse') >= 1 },
-  { id: 'box', title: 'If it fits', desc: 'Watch your cat sit in a box.', done: (c) => st(c, 'boxUse') >= 1 }
+  { id: 'box', title: 'If it fits', desc: 'Watch your cat sit in a box.', done: (c) => st(c, 'boxUse') >= 1 },
+  { id: 'home', title: 'Home sweet home', desc: 'Give your cat its own room.', done: (c) => st(c, 'roomMoved') >= 1 },
+  { id: 'designer', title: 'Cozy designer', desc: 'Redecorate the cat room 5 times.', done: (c) => st(c, 'roomStyled') >= 5 }
 ]
 
 /** ids newly satisfied (not already unlocked) */

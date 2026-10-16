@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ACHIEVEMENTS, COLLECTIBLES, MAX_ROOM_ITEMS, isStat, moodFor, newlyUnlocked, pickCollectible, sanitizeRoom, seasonOf } from './catlife'
+import { ACHIEVEMENTS, COLLECTIBLES, DEFAULT_ROOM_STYLE, MAX_ROOM_ITEMS, ROOM_OPTIONS, isStat, moodFor, newlyUnlocked, pickCollectible, sanitizeRoom, sanitizeRoomStyle, seasonOf } from './catlife'
 import { DEFAULT_COMPANION, type CompanionState } from './companion'
 
 const base = (over: Partial<CompanionState> = {}): CompanionState => ({ ...DEFAULT_COMPANION, stats: {}, achievements: {}, collection: {}, room: [], ...over })
@@ -66,5 +66,32 @@ describe('achievements', () => {
     expect(isStat('perch')).toBe(true)
     expect(isStat('__proto__')).toBe(false)
     expect(isStat(5)).toBe(false)
+  })
+})
+
+describe('cat room style', () => {
+  it('accepts unlocked options and rejects locked or unknown ones', () => {
+    const s = sanitizeRoomStyle({ wall: 'forest', floor: 'tile', window: 'snow', rug: 'red', art: 'bogus', plant: 5 }, 3)
+    expect(s.wall).toBe(DEFAULT_ROOM_STYLE.wall) // level 6 needed
+    expect(s.floor).toBe('tile')
+    expect(s.window).toBe(DEFAULT_ROOM_STYLE.window) // level 4 needed
+    expect(s.rug).toBe('red')
+    expect(s.art).toBe('none')
+    expect(s.plant).toBe('none')
+  })
+  it('keeps the previous style for anything it rejects', () => {
+    const prev = { ...DEFAULT_ROOM_STYLE, wall: 'mint', floor: 'light' }
+    const s = sanitizeRoomStyle({ wall: 'nope' }, 9, prev)
+    expect(s.wall).toBe('mint')
+    expect(s.floor).toBe('light')
+  })
+  it('every slot has a level-1 default option', () => {
+    for (const slot of Object.keys(ROOM_OPTIONS) as Array<keyof typeof ROOM_OPTIONS>) {
+      expect(ROOM_OPTIONS[slot].some((o) => o.level === 1 && o.id === DEFAULT_ROOM_STYLE[slot])).toBe(true)
+    }
+  })
+  it('moving in and decorating unlock achievements', () => {
+    const c = { ...DEFAULT_COMPANION, stats: { roomMoved: 1, roomStyled: 5 }, achievements: {}, collection: {}, room: [] }
+    expect(newlyUnlocked(c).map((a) => a.id)).toEqual(expect.arrayContaining(['home', 'designer']))
   })
 })
