@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DEFAULT_COMPANION, IDLE_GAP_MS, levelInfo, lineFor, periodOf, type CompanionState, type Interaction, type LineEvent } from '@shared/companion'
-import { COLLECTIBLES, SEASON_LINES, moodFor, pickCollectible, seasonOf, type RoomItem } from '@shared/catlife'
+import { COLLECTIBLES, ROOM_DIMS, ROOM_OFFER_LEVEL, SEASON_LINES, moodFor, pickCollectible, seasonOf, type RoomItem } from '@shared/catlife'
 import { unlockedAt } from '@shared/cosmetics'
 import type { Outcome } from '@shared/overdo'
 import { Sfx, type Sound } from '../audio/sfx'
 import { PixelCat, SPRITE_PX, propUrl, type PixelCatHandle } from '../cat/PixelCat'
 import type { AnimName } from '../cat/catSprites'
 import { spriteSize, spriteUrl } from '../cat/items'
+import { SCALE_OF, furnitureSize } from '../cat/furniture'
+import { RoomArt, ROOM_BORDER, roomWorld } from '../cat/RoomArt'
 import { PET_SIZE, TUNING, clampPos, floorY, initialState, step, type Goal, type Mode, type PetState, type Platform } from '../pet/engine'
 
 export type ReactionKind = 'idle' | 'pet' | 'treat' | 'play' | 'rest' | 'puke' | 'annoyed' | 'hyper' | 'tired'
@@ -16,7 +18,7 @@ const REACTION_MS: Partial<Record<ReactionKind, number>> = { pet: 2600, treat: 3
 const HOUR = 3_600_000
 const LOW_POWER_FRAME = 1 / 12
 /** pixel scale per piece, so the cat actually fits in the box and on the bed */
-const SCALE_OF: Record<string, number> = { bed: 4, box: 5, post: 4, ball: 3, boxFront: 5 }
+// (furniture pixel scales live in cat/furniture.ts)
 const MAX_FINDS = 3
 /** how far the cat visually sinks into furniture it is using (px) */
 const USE_OFFSET: Record<string, number> = { bed: 14, box: 10 }
@@ -67,7 +69,9 @@ export function PetView() {
   const autoNap = useRef(false)
   const findId = useRef(1)
 
-  const world = () => ({ width: window.innerWidth, height: window.innerHeight })
+  // when the cat lives in its own room, its world is the room's interior (offset on the overlay)
+  const roomRef = useRef({ on: false, origin: { x: 0, y: 0 }, world: { width: 0, height: 0 }, rect: { x: 0, y: 0, w: 0, h: 0 } })
+  const world = () => (roomRef.current.on ? roomRef.current.world : { width: window.innerWidth, height: window.innerHeight })
 
   /** sounds are opt-in; never while the overlay is hidden (e.g. a fullscreen app is up) */
   const sound = useCallback((name: Sound) => {
@@ -127,8 +131,8 @@ export function PetView() {
         setReaction('puke')
         say('puke')
         sound('gag')
-        const x = p?.x ?? 0
-        const y = p?.y ?? 0
+        const x = (p?.x ?? 0) + roomRef.current.origin.x
+        const y = (p?.y ?? 0) + roomRef.current.origin.y
         // the mess appears a moment into the retch, stays a while, then fades away by itself (nothing to clean up)
         window.setTimeout(() => {
           const id = Date.now()
@@ -196,11 +200,46 @@ export function PetView() {
 
   // furniture the cat can visit (positions in overlay pixels)
   const room = comp.room
+  const roomOn = comp.roomMode
+  const dims = ROOM_DIMS[comp.roomSize]
+  const [roomPosLocal, setRoomPosLocal] = useState<{ x: number; y: number } | null>(null)
+  const [offerOpen, setOfferOpen] = useState(false)
+  const offerShown = useRef(false)
+  const start = roomPosLocal ?? comp.roomPos ?? { x: size.width - dims.w - 40, y: size.height - dims.h - 40 }
+  const rp = { x: Math.min(Math.max(0, size.width - dims.w), Math.max(0, start.x)), y: Math.min(Math.max(26, size.height - dims.h), Math.max(26, start.y)) }
+  const rw = roomWorld(dims.w, dims.h)
+  roomRef.current = {
+    on: roomOn,
+    origin: roomOn ? { x: rp.x + ROOM_BORDER, y: rp.y + ROOM_BORDER } : { x: 0, y: 0 },
+    world: rw,
+    rect: { x: rp.x, y: rp.y, w: dims.w, h: dims.h }
+  }
+  const origin = roomRef.current.origin
+  const worldW = roomOn ? rw.width : size.width
   const goalsRef = useRef<Goal[]>([])
   goalsRef.current = useMemo(
-    () => room.map((r): Goal => ({ id: r.id, type: r.type, x: r.x * size.width + (r.type === 'post' ? -46 : 0) })),
-    [room, size.width]
+    () => room.map((r): Goal => ({ id: r.id, type: r.type, x: r.x * worldW + (r.type === 'post' ? -46 : 0) })),
+    [room, worldW]
   )
+
+  // moving in or out (or resizing the room) drops the cat into its new world
+  const roomKey = `${comp.roomMode}|${comp.roomSize}`
+  useEffect(() => {
+    if (pet.current) pet.current = initialState(world(), null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomKey])
+  useEffect(() => setRoomPosLocal(null), [comp.roomPos])
+
+  // once the cat is a little attached (level 2+), it asks - once - whether it may have its own room
+  useEffect(() => {
+    if (comp.roomOffer !== 'unasked' || comp.roomMode || offerShown.current || levelInfo(comp.bond).level < ROOM_OFFER_LEVEL) return
+    const id = window.setTimeout(() => {
+      offerShown.current = true // at most once per session; answering "Not now" stops it for good
+      setOfferOpen(true)
+      window.setTimeout(() => setOfferOpen(false), 120_000)
+    }, 20_000)
+    return () => window.clearTimeout(id)
+  }, [comp.roomOffer, comp.roomMode, comp.bond])
 
   // read-only peek at the cat's state (used by automated checks)
   useEffect(() => {
@@ -232,20 +271,25 @@ export function PetView() {
       const base = TUNING[compRef.current.personality]
       // time of day nudges energy: livelier mornings, sleepier nights
       const mood = moodFor(new Date().getHours())
-      const tuning = { ...base, speed: base.speed * mood.speed, restless: base.restless * mood.restless }
+      const rr = roomRef.current
+      const tuning = { ...base, climb: rr.on ? 0 : base.climb, speed: base.speed * mood.speed, restless: base.restless * mood.restless }
       // pointer position is only known while it moves over the overlay; it is never stored or sent anywhere
       const m = mouse.current
-      const target = m && performance.now() - m.at < 10_000 ? { x: m.x, y: m.y } : null
-      const reacting = kindRef.current !== 'idle' && kindRef.current !== 'hyper' // hyper cats keep running
+      const inside = !rr.on || (!!m && m.x >= rr.rect.x && m.x <= rr.rect.x + rr.rect.w && m.y >= rr.rect.y && m.y <= rr.rect.y + rr.rect.h)
+      const target = m && inside && performance.now() - m.at < 10_000 ? { x: m.x - rr.origin.x, y: m.y - rr.origin.y } : null
+      // reactions own the cat; so does your pointer: it stands still while you hover it or its menu is open
+      const holding = captured.current || menuRef.current
+      const reacting = (kindRef.current !== 'idle' && kindRef.current !== 'hyper') || (holding && kindRef.current !== 'hyper')
       const next = step(p, dt, w, tuning, reacting, Math.random, {
         target,
-        platforms: compRef.current.perch ? platforms.current : [],
+        platforms: compRef.current.perch && !rr.on ? platforms.current : [],
         goals: goalsRef.current
       })
       if (kindRef.current === 'hyper' && (next.mode === 'sit' || next.mode === 'lick' || next.mode === 'stretch' || next.mode === 'walk')) {
         next.mode = 'run'
         next.timer = 3
       }
+      if (rr.on) next.x = Math.min(Math.max(next.x, PET_SIZE / 2), w.width - PET_SIZE / 2) // never outside the room
       // count things the player might enjoy noticing (for achievements)
       const pv = prev.current
       if (next.mode === 'chase' && pv.mode !== 'chase') window.cat.statBump('chase')
@@ -255,7 +299,7 @@ export function PetView() {
       pet.current = next
 
       const sink = next.mode === 'use' && next.use ? USE_OFFSET[next.use] ?? 0 : 0
-      if (el.current) el.current.style.transform = `translate3d(${next.x - PET_SIZE / 2}px, ${next.y - PET_SIZE / 2 + sink}px, 0)`
+      if (el.current) el.current.style.transform = `translate3d(${next.x - PET_SIZE / 2 + rr.origin.x}px, ${next.y - PET_SIZE / 2 + sink + rr.origin.y}px, 0)`
       if (sprite.current) {
         // the sprite faces right; derive orientation for walking, wall climbing and ceiling crawling
         const dir = next.mode === 'use' && next.use === 'post' ? 1 : next.dir // face the scratching post
@@ -292,7 +336,8 @@ export function PetView() {
       if (!p || (Math.abs(p.x - lx) < 2 && Math.abs(p.y - ly) < 2)) return
       lx = p.x
       ly = p.y
-      window.cat.petPos(p.x, p.y, (p.mode === 'sit' || p.mode === 'walk') && p.surface === null)
+      const o = roomRef.current
+      window.cat.petPos(p.x + o.origin.x, p.y + o.origin.y, (p.mode === 'sit' || p.mode === 'walk') && p.surface === null && !o.on)
     }, 500)
     return () => window.clearInterval(id)
   }, [])
@@ -328,7 +373,7 @@ export function PetView() {
       setFinds((l) => {
         if (l.length >= MAX_FINDS) return l
         const c = pickCollectible(seasonOf(new Date()))
-        const f: Find = { id: findId.current++, type: c.id, x: p.x - p.dir * 36, y: p.y + PET_SIZE / 2 }
+        const f: Find = { id: findId.current++, type: c.id, x: p.x - p.dir * 36 + roomRef.current.origin.x, y: p.y + PET_SIZE / 2 + roomRef.current.origin.y }
         window.setTimeout(() => {
           setFinds((cur) => {
             const mine = cur.find((q) => q.id === f.id)
@@ -400,7 +445,7 @@ export function PetView() {
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0 || !pet.current) return
     e.currentTarget.setPointerCapture(e.pointerId)
-    down.current = { sx: e.clientX, sy: e.clientY, ox: e.clientX - pet.current.x, oy: e.clientY - pet.current.y, moved: false, px: e.clientX, py: e.clientY }
+    down.current = { sx: e.clientX, sy: e.clientY, ox: e.clientX - pet.current.x - roomRef.current.origin.x, oy: e.clientY - pet.current.y - roomRef.current.origin.y, moved: false, px: e.clientX, py: e.clientY }
     setCapture(true)
   }
   const onPointerMove = (e: React.PointerEvent) => {
@@ -412,7 +457,7 @@ export function PetView() {
       dragging.current = true
     }
     if (d.moved) {
-      const c = clampPos(e.clientX - d.ox, e.clientY - d.oy, world())
+      const c = clampPos(e.clientX - d.ox - roomRef.current.origin.x, e.clientY - d.oy - roomRef.current.origin.y, world())
       const vx = e.clientX - d.px
       p.vx = p.vx * 0.6 + vx * 60 * 0.4
       swing.current = Math.max(-25, Math.min(25, p.vx / 14))
@@ -475,12 +520,8 @@ export function PetView() {
   }
 
   // ----- furniture rendering / decorating -----
-  const itemX = (r: RoomItem) => (roomDrag[r.id] ?? r.x) * size.width
-  const sizeOf = (type: string) => {
-    const s = spriteSize(type === 'box' ? 'boxBack' : type)
-    const k = SCALE_OF[type] ?? 3
-    return { w: s.w * k, h: s.h * k }
-  }
+  const itemX = (r: RoomItem) => (roomDrag[r.id] ?? r.x) * worldW // x inside the cat's world
+  const sizeOf = (type: string) => furnitureSize(type)
   const rollingBall = look.mode === 'use' && look.use === 'ball'
   const startDrag = (e: React.PointerEvent, r: RoomItem) => {
     if (!decorate) return
@@ -491,7 +532,7 @@ export function PetView() {
   }
   const moveDrag = (e: React.PointerEvent, r: RoomItem) => {
     if ((e.currentTarget as HTMLElement).dataset.dragging !== '1') return
-    setRoomDrag((d) => ({ ...d, [r.id]: Math.min(0.97, Math.max(0.03, e.clientX / size.width)) }))
+    setRoomDrag((d) => ({ ...d, [r.id]: Math.min(0.97, Math.max(0.03, (e.clientX - origin.x) / worldW)) }))
   }
   const endDrag = (e: React.PointerEvent, r: RoomItem) => {
     const t = e.currentTarget as HTMLElement
@@ -502,12 +543,43 @@ export function PetView() {
     window.cat.companionConfig({ room: compRef.current.room.map((q) => (q.id === r.id ? { ...q, x } : q)) })
   }
 
+  const handleDown = useRef<{ dx: number; dy: number } | null>(null)
+  const onHandleDown = (e: React.PointerEvent) => {
+    e.currentTarget.setPointerCapture(e.pointerId)
+    handleDown.current = { dx: e.clientX - rp.x, dy: e.clientY - rp.y }
+    setCapture(true)
+  }
+  const onHandleMove = (e: React.PointerEvent) => {
+    const d = handleDown.current
+    if (d) setRoomPosLocal({ x: e.clientX - d.dx, y: e.clientY - d.dy })
+  }
+  const onHandleUp = () => {
+    if (handleDown.current && roomPosLocal) window.cat.companionConfig({ roomPos: { x: rp.x, y: rp.y } })
+    handleDown.current = null
+  }
+  const stop = (e: React.PointerEvent) => e.stopPropagation()
+
   return (
     <div className={'overlay' + (decorate ? ' decorating' : '')}>
+      {roomOn && (
+        <>
+          <div className="room-abs" style={{ position: 'absolute', left: rp.x, top: rp.y }}>
+            <RoomArt style={comp.roomStyle} w={dims.w} h={dims.h} hour={new Date().getHours()} />
+          </div>
+          <div className="room-handle" data-hit style={{ left: rp.x, top: rp.y - 24, width: dims.w, zIndex: 5 }} onPointerDown={onHandleDown} onPointerMove={onHandleMove} onPointerUp={onHandleUp} title="Drag to move the room">
+            <span>{'\u{1F43E}'} Cat&rsquo;s room</span>
+            <span className="grow" />
+            <button onPointerDown={stop} onClick={() => window.cat.panelToggle()} title="Open Cat's Desk to decorate">Decorate</button>
+            <button onPointerDown={stop} onClick={() => window.cat.companionConfig({ roomMode: false })} title="Let the cat roam the desktop again">Leave</button>
+          </div>
+        </>
+      )}
       {room.map((r) => {
         const s = sizeOf(r.type)
         const x = itemX(r)
-        const style = { left: x - s.w / 2, bottom: 0, width: s.w, height: s.h }
+        const style = roomOn
+          ? { left: origin.x + x - s.w / 2, top: origin.y + rw.height - s.h, width: s.w, height: s.h }
+          : { left: x - s.w / 2, bottom: 0, width: s.w, height: s.h }
         return (
           <div
             key={r.id}
@@ -555,6 +627,15 @@ export function PetView() {
       ))}
       <div ref={el} className="pet" style={{ width: PET_SIZE, height: PET_SIZE }}>
         <div className={'ui' + (look.high ? ' below' : '')}>
+          {offerOpen && (
+            <div className="bubble offer" role="dialog" aria-label="Cat room offer" data-hit>
+              Can I have my own room?
+              <div className="offer-row">
+                <button className="primary" onClick={() => { setOfferOpen(false); window.cat.companionConfig({ roomMode: true }) }}>Yes!</button>
+                <button onClick={() => { setOfferOpen(false); window.cat.companionConfig({ roomOffer: 'declined' }) }}>Not now</button>
+              </div>
+            </div>
+          )}
           {bubble && (
             <div key={bubble.id} className="bubble" role="status" data-hit>
               {bubble.text}
@@ -593,7 +674,11 @@ export function PetView() {
             src={spriteUrl('boxFront')}
             alt=""
             draggable={false}
-            style={{ left: itemX(r) - (s.w * SCALE_OF.boxFront) / 2, bottom: 0, width: s.w * SCALE_OF.boxFront }}
+            style={
+              roomOn
+                ? { left: origin.x + itemX(r) - (s.w * SCALE_OF.boxFront) / 2, top: origin.y + rw.height - s.h * SCALE_OF.boxFront, width: s.w * SCALE_OF.boxFront }
+                : { left: itemX(r) - (s.w * SCALE_OF.boxFront) / 2, bottom: 0, width: s.w * SCALE_OF.boxFront }
+            }
           />
         )
       })}
