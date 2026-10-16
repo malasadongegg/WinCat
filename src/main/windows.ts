@@ -41,6 +41,7 @@ try {
   } as unknown as Api
   void RECT
 } catch {
+  console.warn('window detection unavailable (native module did not load); perching disabled')
   api = null // non-Windows or load failure: perching disabled
 }
 

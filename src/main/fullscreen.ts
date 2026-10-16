@@ -32,6 +32,7 @@ try {
     cls: user32.func('int GetClassNameW(void *h, _Out_ uint16_t *buf, int n)')
   } as unknown as Api
 } catch {
+  console.warn('fullscreen detection unavailable (native module did not load)')
   api = null // non-Windows or load failure: feature disabled
 }
 
