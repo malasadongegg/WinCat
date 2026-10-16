@@ -10,6 +10,9 @@ The user prefers a 2D desktop-pet cat that "lives inside the computer". The Reac
 - Art (2026-10-16, pixel style like vscode-pets): the SVG cat was replaced by a side-view 32x32 pixel-art black cat drawn procedurally in code (`cat/catSprites.ts`, no external assets, nothing to license) and animated frame-by-frame by `cat/PixelCat.tsx`: 4-frame walk cycle, sitting with tail wag + blinks, happy petting (hearts), eating (fish), play (crouch/swat + rolling yarn), sleeping loaf (Zzz), falling, dangling when dragged; wall climbing and ceiling crawling reuse the walk frames rotated/flipped. Click-through is per-pixel (transparent sprite pixels pass clicks through). Low power slows the idle/sleep animation to 0.5 fps. The `ANIMS` table is the only contract, so hand-drawn PNG sheets can replace the generated frames later. Not verified by hand: climbing/ceiling/fall/drag appearance on real desktop.
 - Fullscreen auto-hide now uses foreground-window geometry (covers its monitor, not shell/desktop, not our own pid) instead of SHQueryUserNotificationState. Dev-only env `WINCAT_NO_FULLSCREEN_HIDE=1` disables it for testing (if VS Code itself is in fullscreen the cat correctly hides).
 
+### First-run welcome and README (2026-10-16)
+- On the very first launch the cat says hello once and explains the two clicks (flag saved as `welcomed`; verified). Project `README.md` added for GitHub (what it is, develop/build commands, structure, status).
+
 ### Crash recovery, user guide, fresh installer (2026-10-16)
 - If a window's renderer process crashes it is reloaded automatically (up to 5 times); verified by force-crashing the cat overlay (it came back). Data lives in the main process and on disk, so nothing is lost.
 - `docs/USER_GUIDE.md` (plain-language guide, written to be shared with a friend) and `docs/SECURITY.md` (threat model).
