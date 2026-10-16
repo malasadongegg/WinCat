@@ -89,15 +89,54 @@ const D: Record<string, Def> = {
   ball: { rows: ['..xxxx..', '.xxqxxx.', 'xxqxxxxx', 'xqxxqxxx', 'xxxqxxqx', 'xxxxqqxx', '.xxxxxx.', '..xxxx..'], colors: { x: '#ffd166', q: '#e0a53a' } }
 }
 
+
+// ----- the cat room: window, wall art, plants, lamp -----
+function windowRows(): string[] {
+  const rows: string[] = []
+  for (let y = 0; y < 20; y++) {
+    let r = ''
+    for (let x = 0; x < 24; x++) {
+      if (y === 19) r += 'w'
+      else if (y === 0 || y === 18 || x === 0 || x === 23 || x === 11 || x === 12 || y === 9) r += 'f'
+      else r += 's'
+    }
+    rows.push(r)
+  }
+  // clouds / stars / snowflakes
+  const dots: Array<[number, number]> = [[4, 3], [5, 3], [6, 3], [5, 2], [3, 5], [17, 4], [18, 4], [16, 12], [17, 12], [18, 12], [17, 11], [7, 14], [20, 15], [8, 6], [19, 7]]
+  for (const [x, y] of dots) rows[y] = rows[y].slice(0, x) + 'c' + rows[y].slice(x + 1)
+  return rows
+}
+function garlandRows(): string[] {
+  const line = 'l'.repeat(24)
+  const flag = (cols: string) => cols.repeat(6).slice(0, 24)
+  return [line, flag('rrr.'), flag('rr..').replace(/\./g, '.'), flag('r...')].map((r, i) => (i === 0 ? r : r))
+}
+Object.assign(D, {
+  window: { rows: windowRows(), colors: { f: '#8a6a43', w: '#b08a5a', s: '#9fd8ff', c: '#ffffff' } },
+  artFish: { rows: ['ffffffffff', 'fbbbbbbbbf', 'fbbbbbbbbf', 'fbbxxxbxbf', 'fbxxwxxxxf', 'fbxxxxxxbf', 'fbbxxxbxbf', 'fbbbbbbbbf', 'fbbbbbbbbf', 'fbbbbbbbbf', 'fbbbbbbbbf', 'ffffffffff'], colors: { f: '#7a5a3a', b: '#cfe9f7', x: '#f08a4b', w: '#ffffff' } },
+  artFrame: { rows: ['ffffffffff', 'fssssssssf', 'fssssssysf', 'fsggsssssf', 'fggggssssf', 'fgggggggsf', 'fggggggggf', 'fggggggggf', 'fggggggggf', 'ffffffffff'], colors: { f: '#7a5a3a', s: '#bfe3ff', g: '#6bb36b', y: '#ffe066' } },
+  artClock: { rows: ['..cccccc..', '.cwwwwwwc.', 'cwwwwwwwwc', 'cwwwhwwwwc', 'cwwwhwwwwc', 'cwwwhhhwwc', 'cwwwwwwwwc', 'cwwwwwwwwc', '.cwwwwwwc.', '..cccccc..'], colors: { c: '#7a5a3a', w: '#fff8e8', h: '#3a2a22' } },
+  artGarland: { rows: ['llllllllllllllllllllllll', 'rrr.yyy.bbb.ggg.rrr.yyy.', '.r...y...b...g...r...y..'], colors: { l: '#6d4c30', r: '#e85d5d', y: '#f2c230', b: '#4a90e2', g: '#4caf6a' } },
+  plantSprout: { rows: ['...gg...', '..gggg..', '.gg.gg..', '..g..g..', '...gg...', '...g....', '.pppppp.', '.pppppp.', '..pppp..', '..pppp..'], colors: { g: '#4caf6a', p: '#b5651d' } },
+  plantCactus: { rows: ['...gg...', '...gg...', '.g.gg.g.', '.g.gg.g.', '.gggggg.', '...gg...', '...gg...', '...gg...', '.pppppp.', '.pppppp.', '..pppp..', '..pppp..'], colors: { g: '#3f9b5b', p: '#c9744a' } },
+  plantFern: { rows: ['..g......g..', '.gg..gg..gg.', '.ggg.gg.ggg.', '..ggggggggg.', '...gggggg...', '....gggg....', '.....gg.....', '.....gg.....', '..pppppppp..', '..pppppppp..', '..pppppppp..', '...pppppp...', '...pppppp...', '....pppp....'], colors: { g: '#3f9b5b', p: '#a05a2c' } },
+  lampDesk: { rows: ['..yyyy..', '.yyyyyy.', 'yyyyyyyy', 'yyyyyyyy', '...ss...', '...ss...', '...ss...', '...ss...', '...ss...', '...ss...', '...ss...', '...ss...', '..bbbb..', '.bbbbbb.', '.bbbbbb.', '.bbbbbb.'], colors: { y: '#ffd98a', s: '#8a6a43', b: '#6d4c30' } }
+} as Record<string, Def>)
+void garlandRows
+
 export type SpriteName = keyof typeof D
 
 const cache = new Map<string, string>()
 
-export function spriteUrl(name: string): string {
-  const hit = cache.get(name)
+/** @param over optional colour overrides by map character, e.g. the sky colour of a window */
+export function spriteUrl(name: string, over?: Record<string, string>): string {
+  const key = over ? name + JSON.stringify(over) : name
+  const hit = cache.get(key)
   if (hit) return hit
-  const d = D[name]
-  if (!d) return ''
+  const base = D[name]
+  if (!base) return ''
+  const d: Def = over ? { rows: base.rows, colors: { ...base.colors, ...over } } : base
   const w = d.rows[0].length
   const h = d.rows.length
   const c = document.createElement('canvas')
@@ -114,7 +153,7 @@ export function spriteUrl(name: string): string {
   })
   ctx.putImageData(img, 0, 0)
   const url = c.toDataURL()
-  cache.set(name, url)
+  cache.set(key, url)
   return url
 }
 

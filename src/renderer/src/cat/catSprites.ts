@@ -48,6 +48,7 @@ function eye(g: Grid, ex: number, ey: number, style: Eyes): void {
 
 function drawHat(g: Grid, hx: number, hy: number): void {
   const ey = hy - 1
+  const fx = hx + 2
   if (HAT === 'bow') {
     const px: Array<[number, number, string]> = [[2, -7, 'P'], [3, -7, 'P'], [2, -6, 'P'], [3, -6, 'P'], [4, -6, 'R'], [5, -6, 'P'], [6, -6, 'P'], [5, -7, 'P'], [6, -7, 'P'], [3, -5, 'P'], [5, -5, 'P']]
     for (const [x, y, k] of px) g.set(hx + x, hy + y, k)
@@ -60,12 +61,34 @@ function drawHat(g: Grid, hx: number, hy: number): void {
     for (const x of [-4, 0, 4]) { g.set(hx + x, hy - 10, 'G'); g.set(hx + x, hy - 11, 'G') }
     g.set(hx, hy - 12, 'G'); g.set(hx, hy - 8, 'R'); g.set(hx - 2, hy - 7, 'W'); g.set(hx + 2, hy - 7, 'W')
   } else if (HAT === 'glasses') {
-    const fx = hx + 2
     for (const ex of [fx - 4, fx + 1]) {
       for (let i = -1; i <= 3; i++) { g.set(ex + i, ey - 1, 'W'); g.set(ex + i, ey + 3, 'W') }
       g.set(ex - 1, ey, 'W'); g.set(ex - 1, ey + 1, 'W'); g.set(ex - 1, ey + 2, 'W')
       g.set(ex + 3, ey, 'W'); g.set(ex + 3, ey + 1, 'W'); g.set(ex + 3, ey + 2, 'W')
     }
+  } else if (HAT === 'sunglasses') {
+    for (const ex of [fx - 4, fx + 1]) { g.rect(ex - 1, ey - 1, 5, 4, 'K'); g.set(ex, ey, 'W') }
+    g.rect(fx - 1, ey, 2, 1, 'K')
+    g.set(fx - 6, ey, 'K'); g.set(fx + 5, ey, 'K')
+  } else if (HAT === 'flower') {
+    const cols = ['P', 'Y', 'W', 'P', 'Y', 'W', 'P', 'Y']
+    for (let i = 0; i < 8; i++) { g.set(hx - 6 + i * 1.7, hy - 6 - (i % 2), cols[i]); g.set(hx - 6 + i * 1.7, hy - 5, 'G') }
+    g.set(hx, hy - 8, 'X')
+  } else if (HAT === 'headphones') {
+    for (let i = -6; i <= 6; i++) g.set(hx + i, hy - 6 - (Math.abs(i) < 5 ? 1 : 0), 'T')
+    g.rect(hx - 8, hy - 2, 2, 5, 'T'); g.rect(hx + 6, hy - 2, 2, 5, 'T')
+    g.set(hx - 7, hy - 3, 'T'); g.set(hx + 6, hy - 3, 'T')
+  } else if (HAT === 'wizard') {
+    g.poly([[hx - 4.5, hy - 5], [hx + 1.5, hy - 13], [hx + 5, hy - 5]], 'N')
+    g.rect(hx - 7, hy - 6, 14, 1, 'N')
+    g.set(hx, hy - 8, 'Y'); g.set(hx + 2, hy - 10, 'Y'); g.set(hx - 2, hy - 6, 'U'); g.set(hx + 1, hy - 12, 'W')
+  } else if (HAT === 'santa') {
+    g.poly([[hx - 5, hy - 5], [hx + 3, hy - 12], [hx + 5.5, hy - 5]], 'X')
+    g.rect(hx - 6, hy - 6, 12, 2, 'W')
+    g.set(hx + 3, hy - 13, 'W'); g.set(hx + 4, hy - 13, 'W'); g.set(hx + 4, hy - 12, 'W'); g.set(hx + 3, hy - 12, 'W')
+  } else if (HAT === 'halo') {
+    for (let i = -3; i <= 3; i++) { g.set(hx + i, hy - 11, 'G'); g.set(hx + i, hy - 9, 'G') }
+    g.set(hx - 4, hy - 10, 'G'); g.set(hx + 4, hy - 10, 'G')
   }
 }
 
@@ -92,9 +115,28 @@ function head(g: Grid, hx: number, hy: number, eyes: Eyes, o: FaceOpts = {}): vo
   drawHat(g, hx, hy)
 }
 
+/** neckwear equipped while frames are being built (set by buildFrames) */
+let NECK = 'none'
+
+function neckwear(g: Grid, hx: number, hy: number): void {
+  if (NECK === 'scarf') {
+    for (let x = -5; x <= 4; x++) for (let y = 5; y <= 7; y++) g.set(hx + x, hy + y, (x + y) % 3 === 0 ? 'W' : 'C')
+    for (let y = 8; y <= 11; y++) { g.set(hx + 3, hy + y, y % 2 ? 'W' : 'C'); g.set(hx + 4, hy + y, 'C') }
+  } else if (NECK === 'bandana') {
+    g.poly([[hx - 5.5, hy + 5], [hx + 5.5, hy + 5], [hx, hy + 12]], 'X')
+    g.set(hx - 3, hy + 6, 'W'); g.set(hx + 2, hy + 6, 'W'); g.set(hx, hy + 8, 'W')
+  } else if (NECK === 'bowtie') {
+    g.rect(hx - 4, hy + 5, 3, 3, 'U'); g.rect(hx + 2, hy + 5, 3, 3, 'U'); g.rect(hx - 1, hy + 6, 3, 2, 'N')
+  } else if (NECK === 'medal') {
+    g.set(hx - 3, hy + 5, 'C'); g.set(hx - 2, hy + 6, 'C'); g.set(hx + 3, hy + 5, 'C'); g.set(hx + 2, hy + 6, 'C')
+    g.rect(hx - 1, hy + 7, 3, 3, 'G'); g.set(hx, hy + 8, 'Y')
+  }
+}
+
 function collar(g: Grid, hx: number, hy: number): void {
   g.rect(hx - 4, hy + 5, 8, 2, 'R')
   g.set(hx, hy + 7, 'G'); g.set(hx + 1, hy + 7, 'G')
+  neckwear(g, hx, hy)
 }
 
 const TAIL_UP: Array<Array<[number, number]>> = [
@@ -237,8 +279,9 @@ function walkFrame(i: number): Grid {
 
 export type Sheet = Record<string, Grid>
 
-export function buildFrames(hat = 'none'): Sheet {
+export function buildFrames(hat = 'none', neck = 'none'): Sheet {
   HAT = hat
+  NECK = neck
   const f: Sheet = {}
   for (let i = 0; i < 6; i++) f['walk' + i] = walkFrame(i)
   ;([0, 1, 2] as const).forEach((t) => { f['sit' + t] = sit({ tail: t }) })

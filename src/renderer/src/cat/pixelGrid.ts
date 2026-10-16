@@ -27,7 +27,11 @@ export const PALETTE: Record<string, string> = {
   D: '#cfd8ff', // Z
   M: '#ff6b8b', // heart
   V: '#a9c75a', // sick
-  X: '#ff5a4a' // angry
+  X: '#ff5a4a', // angry / bandana
+  C: '#4fc3f7', // cyan accent (scarf)
+  U: '#7e57c2', // violet accent (wizard, bow tie)
+  T: '#26a69a', // teal accent (headphones)
+  N: '#1b2a6b' // navy (wizard hat)
 }
 
 import { itemOf, type Cosmetics } from '@shared/cosmetics'

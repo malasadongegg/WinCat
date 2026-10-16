@@ -38,11 +38,11 @@ function toCanvas(g: Grid, pal: Record<string, string>): HTMLCanvasElement {
 type Sheet = { frames: Record<string, HTMLCanvasElement>; grids: Record<string, Grid>; props: Record<string, string> }
 const cache = new Map<string, Sheet>()
 function sheet(c: Cosmetics): Sheet {
-  const key = `${c.fur}|${c.eyes}|${c.collar}|${c.hat}`
+  const key = `${c.fur}|${c.eyes}|${c.collar}|${c.hat}|${c.neck}`
   let hit = cache.get(key)
   if (!hit) {
     const pal = paletteFor(c)
-    const grids = buildFrames(c.hat)
+    const grids = buildFrames(c.hat, c.neck)
     const frames: Record<string, HTMLCanvasElement> = {}
     for (const k of Object.keys(grids)) frames[k] = toCanvas(grids[k], pal)
     const props: Record<string, string> = {}
@@ -64,7 +64,7 @@ export const PixelCat = forwardRef<PixelCatHandle, Props>(function PixelCat({ an
   const canvas = useRef<HTMLCanvasElement>(null)
   const current = useRef<string>('sit0')
   const prevAnim = useRef<string>('sit')
-  const s = useMemo(() => sheet(cosmetics), [cosmetics.fur, cosmetics.eyes, cosmetics.collar, cosmetics.hat]) // eslint-disable-line react-hooks/exhaustive-deps
+  const s = useMemo(() => sheet(cosmetics), [cosmetics.fur, cosmetics.eyes, cosmetics.collar, cosmetics.hat, cosmetics.neck]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useImperativeHandle(ref, () => ({
     hit(x, y) {
@@ -72,7 +72,10 @@ export const PixelCat = forwardRef<PixelCatHandle, Props>(function PixelCat({ an
       if (!g) return false
       const gx = Math.floor(x / SCALE)
       const gy = Math.floor(y / SCALE)
-      return !!g.get(gx, gy - 0)
+      // forgiving: any opaque pixel within 3 sprite pixels (~9 screen px) counts, so clicks a hair
+      // off the cat's outline still hit the cat instead of leaking through to the app behind it
+      for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) if (g.get(gx + dx, gy + dy)) return true
+      return false
     }
   }))
 
