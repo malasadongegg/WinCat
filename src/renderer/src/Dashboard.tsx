@@ -7,6 +7,7 @@ import { CatTab } from './CatTab'
 import { ClipboardTab } from './ClipboardTab'
 import { Home } from './pages/Home'
 import { Library } from './pages/Library'
+import { PrivatePage } from './pages/PrivatePage'
 import { SearchResults } from './pages/SearchResults'
 import { SettingsPage } from './pages/SettingsPage'
 import { PixelCat } from './cat/PixelCat'
@@ -32,6 +33,7 @@ const PAGES = [
   { id: 'clipboard', label: 'Clipboard', icon: '\u{1F4CB}' },
   { id: 'notes', label: 'Notes', icon: '\u{1F4DD}' },
   { id: 'snippets', label: 'Snippets', icon: '✂️' },
+  { id: 'private', label: 'Private', icon: '\u{1F512}' },
   { id: 'cat', label: 'Cat', icon: '\u{1F43E}' },
   { id: 'settings', label: 'Settings', icon: '⚙️' }
 ] as const
@@ -137,6 +139,8 @@ export function Dashboard(p: Props) {
             <Library kind="note" ws={p.ws} openId={openId} onOpened={clearOpen} />
           ) : page === 'snippets' ? (
             <Library kind="snippet" ws={p.ws} openId={openId} onOpened={clearOpen} />
+          ) : page === 'private' ? (
+            <PrivatePage />
           ) : page === 'cat' ? (
             <CatTab companion={p.companion} onInteract={p.onInteract} onConfig={p.onConfig} />
           ) : (

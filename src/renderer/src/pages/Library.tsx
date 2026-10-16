@@ -5,7 +5,25 @@ import type { Item, ItemKind, Workspace } from '@shared/workspace'
 import { Markdown } from '../ui/Markdown'
 import { ago } from '../ui/hooks'
 
+export interface LibApi {
+  saveItem: typeof window.cat.wsSaveItem
+  deleteItem: typeof window.cat.wsDeleteItem
+  saveFolder: typeof window.cat.wsSaveFolder
+  deleteFolder: typeof window.cat.wsDeleteFolder
+  copyText: typeof window.cat.copyText
+}
+
+const WS_API: LibApi = {
+  saveItem: (i) => window.cat.wsSaveItem(i),
+  deleteItem: (id) => window.cat.wsDeleteItem(id),
+  saveFolder: (f) => window.cat.wsSaveFolder(f),
+  deleteFolder: (id) => window.cat.wsDeleteFolder(id),
+  copyText: (t) => window.cat.copyText(t)
+}
+
 interface Props {
+  /** where saves go: the normal workspace by default, or the private vault */
+  api?: LibApi
   kind: ItemKind
   ws: Workspace
   /** item to open (from search / home); cleared by the parent after use */
@@ -16,7 +34,7 @@ interface Props {
 type FolderFilter = 'all' | 'none' | string
 
 /** Shared list + editor for notes and snippets: folders, favorites, autosave. */
-export function Library({ kind, ws, openId, onOpened }: Props) {
+export function Library({ kind, ws, openId, onOpened, api = WS_API }: Props) {
   const [folder, setFolder] = useState<FolderFilter>('all')
   const [favOnly, setFavOnly] = useState(false)
   const [selected, setSelected] = useState<string | null>(null)
@@ -65,18 +83,18 @@ export function Library({ kind, ws, openId, onOpened }: Props) {
   useEffect(() => {
     if (!current || !draft) return
     if (draft.title === current.title && draft.body === current.body) return
-    const id = window.setTimeout(() => { window.cat.wsSaveItem({ id: current.id, kind, title: draft.title, body: draft.body }) }, 500)
+    const id = window.setTimeout(() => { api.saveItem({ id: current.id, kind, title: draft.title, body: draft.body }) }, 500)
     return () => window.clearTimeout(id)
   }, [draft, current, kind])
 
   const create = async () => {
-    const it = await window.cat.wsSaveItem({ kind, title: '', body: '', folderId: folder !== 'all' && folder !== 'none' ? folder : null })
+    const it = await api.saveItem({ kind, title: '', body: '', folderId: folder !== 'all' && folder !== 'none' ? folder : null })
     if (it) {
       setSelected(it.id)
       window.setTimeout(() => titleRef.current?.focus(), 50)
     }
   }
-  const patch = (p: Partial<Item>) => current && window.cat.wsSaveItem({ id: current.id, kind, ...p })
+  const patch = (p: Partial<Item>) => current && api.saveItem({ id: current.id, kind, ...p })
 
   // deleting is forgiving: a short "Undo" bar re-creates the item exactly as it was
   const [undo, setUndo] = useState<Item | null>(null)
@@ -84,7 +102,7 @@ export function Library({ kind, ws, openId, onOpened }: Props) {
   const remove = async () => {
     if (!current) return
     const gone = { ...current, title: draft?.title ?? current.title, body: draft?.body ?? current.body }
-    await window.cat.wsDeleteItem(current.id)
+    await api.deleteItem(current.id)
     setSelected(null)
     setUndo(gone)
     window.clearTimeout(undoTimer.current)
@@ -92,7 +110,7 @@ export function Library({ kind, ws, openId, onOpened }: Props) {
   }
   const restore = async () => {
     if (!undo) return
-    const it = await window.cat.wsSaveItem({ kind: undo.kind, title: undo.title, body: undo.body, format: undo.format, folderId: undo.folderId, favorite: undo.favorite })
+    const it = await api.saveItem({ kind: undo.kind, title: undo.title, body: undo.body, format: undo.format, folderId: undo.folderId, favorite: undo.favorite })
     setUndo(null)
     if (it) setSelected(it.id)
   }
@@ -103,14 +121,14 @@ export function Library({ kind, ws, openId, onOpened }: Props) {
     setNewFolder(null)
     setRenaming(false)
     if (!name) return
-    const f = await window.cat.wsSaveFolder({ id: renameId, name })
+    const f = await api.saveFolder({ id: renameId, name })
     if (f) setFolder(f.id)
   }
 
   const names = draft && kind === 'snippet' ? placeholders(draft.body) : []
   const filled = draft && kind === 'snippet' ? fill(draft.body, values) : ''
   const copy = async () => {
-    await window.cat.copyText(filled)
+    await api.copyText(filled)
     setCopied(true)
     window.setTimeout(() => setCopied(false), 1500)
   }
@@ -150,7 +168,7 @@ export function Library({ kind, ws, openId, onOpened }: Props) {
         {folder !== 'all' && folder !== 'none' && (
           <div className="row hint">
             <button className="link" onClick={() => { setRenaming(true); setNewFolder(ws.folders.find((x) => x.id === folder)?.name ?? '') }}>Rename</button>
-            <button className="link" onClick={async () => { await window.cat.wsDeleteFolder(folder); setFolder('all') }} title="Items move to No folder">
+            <button className="link" onClick={async () => { await api.deleteFolder(folder); setFolder('all') }} title="Items move to No folder">
               Delete folder
             </button>
           </div>

@@ -244,3 +244,8 @@ h3 { font-size: 13px; margin: 16px 0 6px; }
 .clip-privacy { margin: 8px 0; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 12px; }
 .clip-privacy summary { cursor: pointer; font-weight: 600; }
 .chips-col { display: grid; gap: 2px; }
+
+/* ---------- private vault ---------- */
+.recovery { font: 600 22px/1.4 Consolas, monospace; letter-spacing: .06em; text-align: center; background: var(--card2); padding: 14px; border-radius: var(--radius); user-select: all; }
+.vault-lib { margin-top: 10px; min-height: 340px; }
+.vault-lib .library { height: 360px; }
