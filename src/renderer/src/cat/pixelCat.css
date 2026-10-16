@@ -1,0 +1,29 @@
+.px { position: relative; }
+.px-canvas { width: 100%; height: 100%; image-rendering: pixelated; display: block; }
+.prop { position: absolute; image-rendering: pixelated; opacity: 0; pointer-events: none; }
+
+/* yarn rolls in and bounces during play */
+.fx-play .yarn { left: 74px; bottom: 6px; opacity: 1; animation: yarn 1.6s steps(8) infinite; }
+@keyframes yarn { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-48px); } }
+
+/* the treat sits in front of the cat and shrinks as it is eaten */
+.fx-treat .fish { left: 66px; bottom: 6px; opacity: 1; transform-origin: 0 100%; animation: eat 3.4s steps(6) forwards; }
+@keyframes eat { to { transform: scale(0); opacity: 0; } }
+
+/* hearts float up while being petted */
+.fx-pet .heart { opacity: 1; animation: heart 1.8s steps(8) infinite; }
+.fx-pet .h1 { left: 54px; top: -10px; } .fx-pet .h2 { left: 74px; top: 2px; animation-delay: .6s; } .fx-pet .h3 { left: 36px; top: 2px; animation-delay: 1.2s; }
+@keyframes heart { 0% { transform: translateY(8px); opacity: 0; } 25% { opacity: 1; } 100% { transform: translateY(-18px); opacity: 0; } }
+
+/* Z Z Z while sleeping */
+.fx-rest .zz { opacity: 1; animation: zzz 3s steps(8) infinite; }
+.fx-rest .z1 { left: 66px; top: 26px; } .fx-rest .z2 { left: 74px; top: 14px; animation-delay: 1s; } .fx-rest .z3 { left: 84px; top: 2px; animation-delay: 2s; }
+@keyframes zzz { 0% { opacity: 0; transform: translate(0, 6px); } 30% { opacity: 1; } 100% { opacity: 0; transform: translate(6px, -8px); } }
+
+@media (prefers-reduced-motion: reduce) { .prop { animation-duration: 0s !important; } }
+
+/* anger mark pops beside the head while grumpy */
+.fx-annoyed .bang { left: 62px; top: 6px; opacity: 1; animation: bang .3s steps(2) infinite; }
+@keyframes bang { 50% { transform: translate(1px, -2px) scale(1.15); } }
+.puddle { position: absolute; image-rendering: pixelated; pointer-events: none; animation: puddle 20s linear forwards; }
+@keyframes puddle { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
