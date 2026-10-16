@@ -24,6 +24,8 @@ const api: CatApi = {
     return () => ipcRenderer.removeListener('companion', h)
   },
   getMetrics: () => ipcRenderer.invoke('metrics:get'),
+  pickerShow: () => ipcRenderer.send('picker:show'),
+  pickerHide: () => ipcRenderer.send('picker:hide'),
   statBump: (n) => ipcRenderer.send('stat:bump', n),
   collect: (id) => ipcRenderer.send('collect', id),
   windowsOnScreen: () => ipcRenderer.invoke('windows:get'),
@@ -46,7 +48,7 @@ const api: CatApi = {
   companionGet: () => ipcRenderer.invoke('companion:get'),
   companionInteract: (k) => ipcRenderer.invoke('companion:interact', k),
   companionConfig: (c) => ipcRenderer.invoke('companion:config', c),
-  uiCapture: (over) => ipcRenderer.send('ui:capture', over),
+  uiCapture: (over) => { ipcRenderer.sendSync('ui:capture', over) }, // synchronous: the window is click-through-free before the click lands
   wsGet: () => ipcRenderer.invoke('ws:get'),
   wsSaveItem: (i) => ipcRenderer.invoke('ws:saveItem', i),
   wsDeleteItem: (id) => ipcRenderer.invoke('ws:deleteItem', id),

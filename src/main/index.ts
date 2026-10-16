@@ -8,7 +8,7 @@ import { ClipboardService } from './clipboard/service'
 import { isFullscreenAppActive } from './fullscreen'
 import { loadSettings, saveSettings } from './settings'
 import { OverdoTracker, awardsBond } from '../shared/overdo'
-import { COLLECTIBLES, isStat, newlyUnlocked, sanitizeRoom, type StatName } from '../shared/catlife'
+import { COLLECTIBLES, ROOM_DIMS, isStat, newlyUnlocked, sanitizeRoom, sanitizeRoomStyle, type StatName } from '../shared/catlife'
 import { listWindowTops, type WinTop } from './windows'
 import { WorkspaceService } from './workspace'
 import { sanitizeUi } from '../shared/ui'
@@ -18,6 +18,7 @@ const PANEL_SIZE = { width: 900, height: 600 }
 /** Two windows: a transparent click-through overlay the cat roams on, and the Cat's Desk panel. */
 let petWin: BrowserWindow | null = null
 let panelWin: BrowserWindow | null = null
+let pickerWin: BrowserWindow | null = null
 let tray: Tray | null = null
 let settings: Settings
 let autoHidden = false
@@ -34,7 +35,7 @@ let lastSaved = { x: -9999 }
 const displayKey = (id: number) => String(id)
 const primary = () => screen.getPrimaryDisplay()
 
-function loadView(win: BrowserWindow, view: 'pet' | 'panel'): void {
+function loadView(win: BrowserWindow, view: 'pet' | 'panel' | 'picker'): void {
   if (process.env.ELECTRON_RENDERER_URL) win.loadURL(`${process.env.ELECTRON_RENDERER_URL}?view=${view}`)
   else win.loadFile(join(__dirname, '../renderer/index.html'), { query: { view } })
 }
@@ -91,7 +92,31 @@ function createPanelWindow(): void {
 }
 
 function broadcast(channel: string, ...args: unknown[]): void {
-  for (const w of [petWin, panelWin]) if (w && !w.isDestroyed()) w.webContents.send(channel, ...args)
+  for (const w of [petWin, panelWin, pickerWin]) if (w && !w.isDestroyed()) w.webContents.send(channel, ...args)
+}
+
+const PICKER_SIZE = { width: 560, height: 420 }
+
+/** the quick picker is created the first time it is needed, then just hidden and shown */
+function showPicker(): void {
+  if (!pickerWin || pickerWin.isDestroyed()) {
+    pickerWin = new BrowserWindow({ ...baseWindowOptions(), ...PICKER_SIZE, alwaysOnTop: true })
+    pickerWin.setAlwaysOnTop(true, 'pop-up-menu')
+    pickerWin.on('blur', () => pickerWin?.hide()) // transient: clicking elsewhere dismisses it
+    pickerWin.on('close', (e) => {
+      if (!quitting) { e.preventDefault(); pickerWin?.hide() }
+    })
+    lockDown(pickerWin)
+    loadView(pickerWin, 'picker')
+  }
+  const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea
+  pickerWin.setBounds({
+    x: Math.round(area.x + (area.width - PICKER_SIZE.width) / 2),
+    y: Math.round(area.y + area.height * 0.18),
+    ...PICKER_SIZE
+  })
+  pickerWin.show()
+  pickerWin.focus()
 }
 
 function showPanel(): void {
@@ -144,6 +169,7 @@ function refreshTray(): void {
     Menu.buildFromTemplate([
       { label: "Open Cat's Desk", click: showPanel },
       { label: settings.catHidden ? 'Show cat' : 'Hide cat', click: () => (settings.catHidden ? showCat() : hideCat()) },
+      { label: 'Quick picker (Ctrl+Alt+V)', click: showPicker },
       { label: 'Pause clipboard capture (off until enabled)', type: 'checkbox', checked: clip?.paused ?? false, click: (i) => clip.setPaused(i.checked) },
       { label: 'Sounds', type: 'checkbox', checked: settings.companion.sound, click: (i) => { settings.companion.sound = i.checked; saveSettings(settings); broadcast('companion', settings.companion) } },
       { label: 'Low-power mode', type: 'checkbox', checked: settings.lowPower, click: (i) => setLowPower(i.checked) },
@@ -211,10 +237,13 @@ function registerIpc(): void {
     else if (s === 'collapsed') panelWin?.hide()
   })
   ipcMain.handle('panel:toggle', () => togglePanel())
+  ipcMain.on('picker:hide', () => pickerWin?.hide())
+  ipcMain.on('picker:show', () => showPicker())
 
   // overlay: click-through capture + position reports
   ipcMain.on('ui:capture', (e, over: unknown) => {
     if (typeof over === 'boolean' && sender(e) === petWin) petWin?.setIgnoreMouseEvents(!over, { forward: true })
+    e.returnValue = true
   })
   ipcMain.on('pet:pos', (_e, x: unknown, y: unknown, onFloor: unknown) => {
     if (!isNum(x) || !isNum(y) || !petWin) return
@@ -260,6 +289,24 @@ function registerIpc(): void {
     if (typeof o.bubbles === 'boolean') settings.companion.bubbles = o.bubbles
     if (typeof o.sound === 'boolean') settings.companion.sound = o.sound
     if (typeof (o as { perch?: unknown }).perch === 'boolean') settings.companion.perch = (o as { perch: boolean }).perch
+    const ro = o as { roomMode?: unknown; roomOffer?: unknown; roomStyle?: unknown; roomSize?: unknown; roomPos?: unknown }
+    if (typeof ro.roomMode === 'boolean') {
+      if (ro.roomMode && !settings.companion.roomMode) settings.companion.stats.roomMoved = (settings.companion.stats.roomMoved ?? 0) + 1
+      settings.companion.roomMode = ro.roomMode
+      if (ro.roomMode) settings.companion.roomOffer = 'accepted' // saying yes once answers the question for good
+    }
+    if (ro.roomOffer === 'unasked' || ro.roomOffer === 'accepted' || ro.roomOffer === 'declined') settings.companion.roomOffer = ro.roomOffer
+    if (ro.roomStyle && typeof ro.roomStyle === 'object') {
+      const before = JSON.stringify(settings.companion.roomStyle)
+      settings.companion.roomStyle = sanitizeRoomStyle(ro.roomStyle, levelInfo(settings.companion.bond).level, settings.companion.roomStyle)
+      if (JSON.stringify(settings.companion.roomStyle) !== before) settings.companion.stats.roomStyled = (settings.companion.stats.roomStyled ?? 0) + 1
+    }
+    if (typeof ro.roomSize === 'string' && ro.roomSize in ROOM_DIMS) settings.companion.roomSize = ro.roomSize as keyof typeof ROOM_DIMS
+    if (ro.roomPos === null) settings.companion.roomPos = null
+    else if (ro.roomPos && typeof ro.roomPos === 'object') {
+      const p = ro.roomPos as { x?: unknown; y?: unknown }
+      if (isNum(p.x) && isNum(p.y)) settings.companion.roomPos = { x: Math.round(Math.max(0, Math.min(8000, p.x))), y: Math.round(Math.max(0, Math.min(8000, p.y))) }
+    }
     if (Array.isArray((o as { room?: unknown }).room)) {
       const before = settings.companion.room.length
       settings.companion.room = sanitizeRoom((o as { room: unknown }).room, levelInfo(settings.companion.bond).level)
@@ -336,9 +383,13 @@ app.whenReady().then(() => {
   prevSeen = settings.companion.lastSeen
   clip = new ClipboardService((st) => {
     panelWin?.webContents.send('clip', st)
+    if (pickerWin && !pickerWin.isDestroyed()) pickerWin.webContents.send('clip', st)
     refreshTray()
   })
-  work = new WorkspaceService((w) => panelWin?.webContents.send('ws', w))
+  work = new WorkspaceService((w) => {
+    panelWin?.webContents.send('ws', w)
+    if (pickerWin && !pickerWin.isDestroyed()) pickerWin.webContents.send('ws', w)
+  })
   work.load()
   registerIpc()
   createPetWindow()
@@ -346,6 +397,7 @@ app.whenReady().then(() => {
   createTray()
   clip.start() // capture is session-only (and off until enabled); history lives in memory
   if (!globalShortcut.register('Control+Alt+C', togglePanel)) console.warn('hotkey Ctrl+Alt+C unavailable')
+  if (!globalShortcut.register('Control+Alt+V', showPicker)) console.warn('hotkey Ctrl+Alt+V unavailable')
 
   // Hide automatically during fullscreen apps (without touching the user's own hide setting); return afterwards.
   setInterval(() => {
