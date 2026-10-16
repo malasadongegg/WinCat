@@ -80,6 +80,12 @@ function baseWindowOptions() {
 function lockDown(win: BrowserWindow): void {
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   win.webContents.on('will-navigate', (e) => e.preventDefault())
+  // if a window's renderer ever crashes, bring it straight back; data lives in the main process and on disk
+  let reloads = 0
+  win.webContents.on('render-process-gone', (_e, details) => {
+    console.error('renderer gone:', details.reason)
+    if (details.reason !== 'clean-exit' && reloads++ < 5 && !win.isDestroyed()) setTimeout(() => win.webContents.reload(), 500)
+  })
 }
 
 function createPetWindow(): void {
