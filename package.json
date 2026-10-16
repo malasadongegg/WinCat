@@ -9,7 +9,9 @@
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "dist": "electron-vite build && electron-builder --win",
+    "pack": "electron-vite build && electron-builder --win --dir"
   },
   "dependencies": {
     "koffi": "^3.3.3",
@@ -22,9 +24,57 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "electron": "^44.8.0",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^6.0.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.4",
     "vitest": "^5.0.5"
+  },
+  "author": "Mark",
+  "build": {
+    "appId": "com.mark.windowscatcompanion",
+    "productName": "Windows Cat Companion",
+    "copyright": "Copyright (c) Mark",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/koffi/**"
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Windows Cat Companion",
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "WindowsCatCompanion-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "WindowsCatCompanion-Portable-${version}.${ext}"
+    }
   }
 }
