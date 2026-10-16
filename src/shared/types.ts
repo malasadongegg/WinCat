@@ -2,6 +2,7 @@ import type { ClipState } from './clipboard'
 import type { Cosmetics } from './cosmetics'
 import type { RoomItem, RoomOffer, RoomSize, RoomStyle } from './catlife'
 import type { BackupPick, Resolution, SnapshotList } from './backup'
+import { DEFAULT_HOTKEYS, type HotkeyId } from './hotkeys'
 import type { Outcome } from './overdo'
 import type { UiSettings } from './ui'
 import type { Folder, Item, ItemInput, Workspace } from './workspace'
@@ -10,16 +11,19 @@ import { DEFAULT_COMPANION, type CompanionState, type Interaction, type Personal
 
 export interface Settings {
   lowPower: boolean
+  /** quiet mode: the cat naps in place, no bubbles, sounds or finds */
+  focusMode: boolean
   catHidden: boolean
   /** size cap for automatic local snapshots */
   snapshotCapMB: number
+  hotkeys: Record<HotkeyId, string>
   /** preferred cat window position, keyed by display id */
   placement: Record<string, { x: number; y: number }>
   companion: CompanionState
   ui: UiSettings
 }
 
-export const DEFAULT_SETTINGS: Settings = { lowPower: false, catHidden: false, snapshotCapMB: 1024, placement: {}, companion: DEFAULT_COMPANION, ui: DEFAULT_UI }
+export const DEFAULT_SETTINGS: Settings = { lowPower: false, focusMode: false, catHidden: false, snapshotCapMB: 1024, hotkeys: DEFAULT_HOTKEYS, placement: {}, companion: DEFAULT_COMPANION, ui: DEFAULT_UI }
 
 export interface ConfigPatch {
   personality?: Personality
@@ -68,6 +72,8 @@ export interface CatApi {
   snapshotsSetCap(mb: number): Promise<SnapshotList>
   loginGet(): Promise<{ available: boolean; enabled: boolean }>
   loginSet(on: boolean): Promise<{ available: boolean; enabled: boolean }>
+  hotkeysGet(): Promise<{ hotkeys: Record<HotkeyId, string>; failed: HotkeyId[] }>
+  hotkeysSet(id: HotkeyId, accelerator: string): Promise<{ hotkeys: Record<HotkeyId, string>; failed: HotkeyId[]; error?: string }>
   statBump(name: string): void
   pickerHide(): void
   pickerShow(): void
@@ -100,4 +106,6 @@ export interface CatApi {
   clipImage(id: number): Promise<string | null>
   onClip(cb: (s: ClipState) => void): () => void
   onLowPower(cb: (on: boolean) => void): () => void
+  focusSet(on: boolean): Promise<void>
+  onFocus(cb: (on: boolean) => void): () => void
 }

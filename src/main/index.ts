@@ -17,6 +17,7 @@ import { buildBackup, mergeCompanion, mergeWorkspaces, parseBackup, resolveConfl
 import { createSnapshot, listSnapshots, readSnapshot, snapshotBytes, trimSnapshots } from './backup'
 import { decryptText, encryptText, isEnvelope, type Envelope } from './backupCrypto'
 import { TRAY_ICON_PNG_BASE64 } from './trayIcon'
+import { HOTKEY_LABELS, isValidAccelerator, sanitizeHotkeys, type HotkeyId } from '../shared/hotkeys'
 import { sanitizeUi } from '../shared/ui'
 
 const PANEL_SIZE = { width: 900, height: 600 }
@@ -34,6 +35,8 @@ let clip: ClipboardService
 let work: WorkspaceService
 const overdo = new OverdoTracker()
 let lastPlatforms = '[]'
+/** hotkeys that another program already owns */
+let hotkeyFailed: HotkeyId[] = []
 /** a backup file the user picked and is reviewing (kept in memory only until applied or cancelled) */
 let pendingBackup: BackupData | null = null
 let pendingEnvelope: Envelope | null = null
@@ -165,6 +168,13 @@ function hideCat(): void {
   refreshTray()
 }
 
+function setFocus(on: boolean): void {
+  settings.focusMode = on
+  saveSettings(settings)
+  broadcast('focus', on)
+  refreshTray()
+}
+
 function setLowPower(on: boolean): void {
   settings.lowPower = on
   saveSettings(settings)
@@ -178,9 +188,10 @@ function refreshTray(): void {
     Menu.buildFromTemplate([
       { label: "Open Cat's Desk", click: showPanel },
       { label: settings.catHidden ? 'Show cat' : 'Hide cat', click: () => (settings.catHidden ? showCat() : hideCat()) },
-      { label: 'Quick picker (Ctrl+Alt+V)', click: showPicker },
+      { label: `Quick picker${settings.hotkeys.picker ? ' (' + settings.hotkeys.picker.replace('Control', 'Ctrl') + ')' : ''}`, click: showPicker },
       { label: 'Pause clipboard capture (off until enabled)', type: 'checkbox', checked: clip?.paused ?? false, click: (i) => clip.setPaused(i.checked) },
       { label: 'Sounds', type: 'checkbox', checked: settings.companion.sound, click: (i) => { settings.companion.sound = i.checked; saveSettings(settings); broadcast('companion', settings.companion) } },
+      { label: 'Focus mode (quiet cat)', type: 'checkbox', checked: settings.focusMode, click: (i) => setFocus(i.checked) },
       { label: 'Low-power mode', type: 'checkbox', checked: settings.lowPower, click: (i) => setLowPower(i.checked) },
       { type: 'separator' },
       { label: 'Quit', click: () => app.quit() }
@@ -219,6 +230,21 @@ function pollWindows(): void {
     lastPlatforms = json
     petWin.webContents.send('platforms', tops)
   }
+}
+
+/** (re)register every global hotkey from settings; ones another app owns are reported, not fatal */
+function applyHotkeys(): void {
+  globalShortcut.unregisterAll()
+  hotkeyFailed = []
+  const actions: Record<HotkeyId, () => void> = { panel: togglePanel, picker: showPicker, pause: () => clip.setPaused(!clip.paused), focus: () => setFocus(!settings.focusMode) }
+  for (const id of Object.keys(actions) as HotkeyId[]) {
+    const accel = settings.hotkeys[id]
+    if (!accel) continue
+    let ok = false
+    try { ok = globalShortcut.register(accel, actions[id]) } catch { ok = false }
+    if (!ok) hotkeyFailed.push(id)
+  }
+  refreshTray()
 }
 
 const currentBackup = () => buildBackup(work.get(), settings.companion, settings.ui)
@@ -284,6 +310,7 @@ function registerIpc(): void {
     }
   })
   ipcMain.handle('settings:get', () => settings)
+  ipcMain.handle('focus:set', (_e, on: unknown) => { if (typeof on === 'boolean') setFocus(on) })
   ipcMain.handle('settings:lowPower', (_e, on: unknown) => {
     if (typeof on === 'boolean') setLowPower(on)
   })
@@ -486,6 +513,17 @@ function registerIpc(): void {
     if (typeof on === 'boolean' && app.isPackaged) app.setLoginItemSettings({ openAtLogin: on })
     return { available: app.isPackaged, enabled: app.isPackaged ? app.getLoginItemSettings().openAtLogin : false }
   })
+  ipcMain.handle('hotkeys:get', () => ({ hotkeys: settings.hotkeys, failed: hotkeyFailed }))
+  ipcMain.handle('hotkeys:set', (_e, id: unknown, accel: unknown) => {
+    if (typeof id !== 'string' || !(id in HOTKEY_LABELS) || !isValidAccelerator(accel)) return { hotkeys: settings.hotkeys, failed: hotkeyFailed, error: 'That is not a valid shortcut. Use at least one of Ctrl, Alt, Shift plus a key.' }
+    const key = id as HotkeyId
+    const clash = (Object.keys(settings.hotkeys) as HotkeyId[]).find((o) => o !== key && accel !== '' && settings.hotkeys[o] === accel)
+    if (clash) return { hotkeys: settings.hotkeys, failed: hotkeyFailed, error: `Already used for "${HOTKEY_LABELS[clash]}".` }
+    settings.hotkeys = sanitizeHotkeys({ ...settings.hotkeys, [key]: accel }, settings.hotkeys)
+    saveSettings(settings)
+    applyHotkeys()
+    return { hotkeys: settings.hotkeys, failed: hotkeyFailed, error: hotkeyFailed.includes(key) ? 'Another program is already using that shortcut. Try a different one.' : undefined }
+  })
   ipcMain.handle('snapshots:list', () => snapshotList())
   ipcMain.handle('snapshots:create', () => {
     work.flush()
@@ -553,8 +591,7 @@ app.whenReady().then(() => {
   createPanelWindow()
   createTray()
   clip.start() // capture is session-only (and off until enabled); history lives in memory
-  if (!globalShortcut.register('Control+Alt+C', togglePanel)) console.warn('hotkey Ctrl+Alt+C unavailable')
-  if (!globalShortcut.register('Control+Alt+V', showPicker)) console.warn('hotkey Ctrl+Alt+V unavailable')
+  applyHotkeys()
 
   // Hide automatically during fullscreen apps (without touching the user's own hide setting); return afterwards.
   setInterval(() => {

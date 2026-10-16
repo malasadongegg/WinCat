@@ -37,6 +37,8 @@ const api: CatApi = {
   snapshotsSetCap: (mb) => ipcRenderer.invoke('snapshots:setCap', mb),
   loginGet: () => ipcRenderer.invoke('login:get'),
   loginSet: (on) => ipcRenderer.invoke('login:set', on),
+  hotkeysGet: () => ipcRenderer.invoke('hotkeys:get'),
+  hotkeysSet: (id, a) => ipcRenderer.invoke('hotkeys:set', id, a),
   statBump: (n) => ipcRenderer.send('stat:bump', n),
   collect: (id) => ipcRenderer.send('collect', id),
   windowsOnScreen: () => ipcRenderer.invoke('windows:get'),
@@ -90,6 +92,12 @@ const api: CatApi = {
     const h = (_: unknown, s: ClipState) => cb(s)
     ipcRenderer.on('clip', h)
     return () => ipcRenderer.removeListener('clip', h)
+  },
+  focusSet: (on) => ipcRenderer.invoke('focus:set', on),
+  onFocus: (cb) => {
+    const h = (_: unknown, on: boolean) => cb(on)
+    ipcRenderer.on('focus', h)
+    return () => ipcRenderer.removeListener('focus', h)
   },
   onLowPower: (cb) => {
     const h = (_: unknown, on: boolean) => cb(on)
