@@ -322,6 +322,7 @@ function registerIpc(): void {
     }
   })
   ipcMain.handle('settings:get', () => settings)
+  ipcMain.on('welcome:done', () => { settings.welcomed = true; saveSettings(settings) })
   ipcMain.handle('focus:set', (_e, on: unknown) => { if (typeof on === 'boolean') setFocus(on) })
   ipcMain.handle('settings:lowPower', (_e, on: unknown) => {
     if (typeof on === 'boolean') setLowPower(on)

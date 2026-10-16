@@ -122,6 +122,7 @@ const api: CatApi = {
     ipcRenderer.on('clip', h)
     return () => ipcRenderer.removeListener('clip', h)
   },
+  welcomeDone: () => ipcRenderer.send('welcome:done'),
   focusSet: (on) => ipcRenderer.invoke('focus:set', on),
   onFocus: (cb) => {
     const h = (_: unknown, on: boolean) => cb(on)

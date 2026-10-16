@@ -21,6 +21,8 @@ export interface Settings {
   hotkeys: Record<HotkeyId, string>
   clipboard: ClipConfig
   vaultAutoLockMin: number
+  /** the cat has already introduced itself */
+  welcomed: boolean
   vaultShowNames: boolean
   /** preferred cat window position, keyed by display id */
   placement: Record<string, { x: number; y: number }>
@@ -28,7 +30,7 @@ export interface Settings {
   ui: UiSettings
 }
 
-export const DEFAULT_SETTINGS: Settings = { lowPower: false, focusMode: false, catHidden: false, snapshotCapMB: 1024, hotkeys: DEFAULT_HOTKEYS, clipboard: DEFAULT_CLIP_CONFIG, vaultAutoLockMin: 5, vaultShowNames: false, placement: {}, companion: DEFAULT_COMPANION, ui: DEFAULT_UI }
+export const DEFAULT_SETTINGS: Settings = { lowPower: false, focusMode: false, catHidden: false, snapshotCapMB: 1024, hotkeys: DEFAULT_HOTKEYS, clipboard: DEFAULT_CLIP_CONFIG, vaultAutoLockMin: 5, vaultShowNames: false, welcomed: false, placement: {}, companion: DEFAULT_COMPANION, ui: DEFAULT_UI }
 
 export interface ConfigPatch {
   personality?: Personality
@@ -131,6 +133,7 @@ export interface CatApi {
   clipImage(id: number): Promise<string | null>
   onClip(cb: (s: ClipState) => void): () => void
   onLowPower(cb: (on: boolean) => void): () => void
+  welcomeDone(): void
   focusSet(on: boolean): Promise<void>
   onFocus(cb: (on: boolean) => void): () => void
 }

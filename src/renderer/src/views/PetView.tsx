@@ -168,6 +168,14 @@ export function PetView() {
 
   useEffect(() => {
     window.cat.getSettings().then((s) => { setLowPower(s.lowPower); lowRef.current = s.lowPower; setFocus(s.focusMode); focusRef.current = s.focusMode })
+    // the very first launch: the cat says hello and explains the two clicks (once, ever)
+    window.cat.getSettings().then((s) => {
+      if (s.welcomed) return
+      window.setTimeout(() => {
+        showBubble("Hi! I'm your cat. Click me for pets and treats, double-click to open my desk!", 9000)
+        window.cat.welcomeDone()
+      }, 2500)
+    })
     const offF = window.cat.onFocus((on) => { setFocus(on); focusRef.current = on; if (on) { setBubble(null); setOfferOpen(false) } })
     window.cat.uiGet().then((u) => setReduceMotion(u.reduceMotion))
     const offUi = window.cat.onUi((u) => setReduceMotion(u.reduceMotion))
