@@ -78,10 +78,23 @@ export function Library({ kind, ws, openId, onOpened }: Props) {
   }
   const patch = (p: Partial<Item>) => current && window.cat.wsSaveItem({ id: current.id, kind, ...p })
 
+  // deleting is forgiving: a short "Undo" bar re-creates the item exactly as it was
+  const [undo, setUndo] = useState<Item | null>(null)
+  const undoTimer = useRef<number | undefined>(undefined)
   const remove = async () => {
     if (!current) return
+    const gone = { ...current, title: draft?.title ?? current.title, body: draft?.body ?? current.body }
     await window.cat.wsDeleteItem(current.id)
     setSelected(null)
+    setUndo(gone)
+    window.clearTimeout(undoTimer.current)
+    undoTimer.current = window.setTimeout(() => setUndo(null), 10_000)
+  }
+  const restore = async () => {
+    if (!undo) return
+    const it = await window.cat.wsSaveItem({ kind: undo.kind, title: undo.title, body: undo.body, format: undo.format, folderId: undo.folderId, favorite: undo.favorite })
+    setUndo(null)
+    if (it) setSelected(it.id)
   }
 
   const addFolder = async () => {
@@ -155,6 +168,13 @@ export function Library({ kind, ws, openId, onOpened }: Props) {
         </ul>
       </div>
 
+      {undo && (
+        <div className="undo-bar" role="status">
+          Deleted &ldquo;{undo.title || 'Untitled'}&rdquo;
+          <button onClick={restore}>Undo</button>
+          <button className="link" onClick={() => setUndo(null)} aria-label="Dismiss">&times;</button>
+        </div>
+      )}
       <div className="lib-editor">
         {current && draft ? (
           <>
