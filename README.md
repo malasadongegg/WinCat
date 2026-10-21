@@ -1,3 +1,6 @@
+*IN PROGRESS*
+
+
 # Windows Cat Companion
 
 A pixel-art cat that lives on your Windows desktop, with a quiet, privacy-first toolbox: clipboard history,
